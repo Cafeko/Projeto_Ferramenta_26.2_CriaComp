@@ -1,0 +1,5 @@
+# Runtime das Serverless Functions (Vercel usa Python 3.12 por padrão)
+fastapi>=0.162,<1.0
+uvicorn>=0.54,<1.0
+requests>=2.34,<3.0
+pydantic>=2.14,<3.0

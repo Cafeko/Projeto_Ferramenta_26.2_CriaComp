@@ -1,0 +1,30 @@
+{
+  "name": "spritetransfer-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "SpriteTransfer Web - animações em pixel art guiadas por referência e texto.",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "dev:api": "uvicorn api.index:app --reload --port 8000",
+    "dev:all": "concurrently -n API,WEB -c magenta,cyan \"npm:dev:api\" \"npm:dev\"",
+    "vercel:dev": "vercel dev --local"
+  },
+  "dependencies": {
+    "lucide-react": "^1.70.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@vitejs/plugin-react": "^6.2.1",
+    "concurrently": "^10.0.7",
+    "tailwindcss": "^4.3.5",
+    "vite": "^8.3.6"
+  }
+}
