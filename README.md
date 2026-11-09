@@ -41,9 +41,18 @@ Artistas & Designers: Para explorar variações visuais e rascunhar movimentaç�
 │   ├── __init__.py       # Torna `api` importável (api.index:app)
 │   └── index.py          # App ASGI (FastAPI) exportado como `app`
 ├── src/
-│   ├── App.jsx           # Cabeçalho + teste do health check
-│   ├── index.css         # Tailwind + tema base
+│   ├── App.jsx           # Shell: cabeçalho, dashboard e rodapé
+│   ├── components/
+│   │   ├── MainDashboard.jsx      # Estado global + chamadas de API
+│   │   └── dashboard/             # Cards (BYOK, referência, preview, correção, exportação)
+│   ├── lib/api.js        # Cliente do backend e normalização de erros
+│   ├── utils/
+│   │   ├── imagePipeline.js       # Recorte, alinhamento, grade e GIF (Canvas)
+│   │   └── presets.js             # Presets Walk/Run/Attack desenhados no navegador
+│   ├── index.css         # Tailwind + tema base + xadrez de transparência
 │   └── main.jsx
+├── tests/
+│   └── image-pipeline.html        # 22 testes do pipeline no navegador
 ├── index.html
 ├── vite.config.js        # Proxy /api -> http://127.0.0.1:8000
 ├── vercel.json           # Services: /api/* -> FastAPI, resto -> Vite
@@ -122,9 +131,9 @@ npm run dev
 | Health check (direto na API) | http://localhost:8000/api/health |
 | Swagger UI | http://localhost:8000/api/docs |
 
-O botão **“Testar health check”** no cabeçalho chama `GET /api/health`.
-Em desenvolvimento, o Vite faz proxy de `/api` para a porta `8000`, então não
-há CORS nem variáveis de ambiente obrigatórias.
+O dashboard principal abre em `http://localhost:5173`. Em desenvolvimento, o
+Vite faz proxy de `/api` para a porta `8000`, então não há CORS nem variáveis de
+ambiente obrigatórias.
 
 ## 🔌 API de geração (BYOK)
 
@@ -229,8 +238,8 @@ Códigos comuns: `invalid_api_key`, `quota_exhausted`, `rate_limit`,
 
 ### Página de teste (laboratório)
 
-Enquanto a interface principal ainda não consome a API, use
-`/laboratorio-api.html` (também disponível em produção, ex.:
+A interface principal já consome a API. O `/laboratorio-api.html` continua
+disponível para depurar o backend isoladamente (também em produção, ex.:
 `https://spritetransfer-web.vercel.app/laboratorio-api.html`). Ela permite:
 
 1. colar a chave e validar/listar os modelos do provedor;
@@ -241,6 +250,39 @@ Enquanto a interface principal ainda não consome a API, use
 
 A chave fica apenas na memória da aba: não é salva no navegador nem enviada
 para outro lugar além do backend do próprio projeto.
+
+## 🖥️ Dashboard principal
+
+`src/components/MainDashboard.jsx` concentra o estado e as chamadas à API; a
+interface é dividida em três colunas responsivas (empilham no celular e viram
+duas colunas em tablets):
+
+### Coluna esquerda — configuração
+- **BYOK:** provedor, chave (com botão `Validar`), lista dinâmica de modelos e
+  link `Obter chave` para o console de cada provedor.
+- **Referência de movimento:** presets `Walk`, `Run` e `Attack` ou drag & drop
+  de PNG/spritesheet. Spritesheets ganham campos de **Colunas/Linhas** e o
+  checkbox **Auto-fatiar grid** (a grade é estimada pelas dimensões e pode ser
+  ajustada à mão).
+- **Prompt:** aparência do personagem e estilo de arte.
+- **`[ GERAR NOVO SPRITESHEET ]`** limpa o histórico e gera tudo do zero,
+  enviando uma referência de pose por frame.
+
+### Coluna central — preview e filmstrip
+- Player lado a lado com a **animação original** e a **nova animação**, em loop
+  sincronizado, controle de **FPS** e **Play/Pause**.
+- Filmstrip com os frames PNG numerados e o botão **`[ Editar Frame ]`** em cada
+  um (envia `target_frame_index` e corrige só aquele quadro).
+
+### Coluna direita — correção e exportação
+- **Correção em lote:** instrução textual aplicada a todos os frames atuais, que
+  são enviados como `previous_generated_images` para preservar o contexto.
+- **Exportação:** `[ EXPORTAR SPRITESHEET PNG (GRID) ]` e
+  `[ EXPORTAR GIF ANIMADO ]`, ambos processados localmente pela Canvas API.
+
+A chave nunca é persistida (nem em `localStorage`): fica só no estado do React.
+Os frames e as referências são normalizados para Data URLs antes de ir ao
+backend, e o cliente bloqueia o envio quando o Base64 passa do limite da Vercel.
 
 ## 🎨 Pipeline local de imagens
 
