@@ -10,6 +10,7 @@ import {
 import ApiConfigPanel from './dashboard/ApiConfigPanel'
 import CorrectionPanel from './dashboard/CorrectionPanel'
 import ExportPanel from './dashboard/ExportPanel'
+import FrameEditModal from './FrameEditModal'
 import PreviewPanel from './dashboard/PreviewPanel'
 import ReferencePanel from './dashboard/ReferencePanel'
 import {
@@ -252,6 +253,14 @@ export default function MainDashboard() {
   const [exportColumns, setExportColumns] = useState('4')
   const [exporting, setExporting] = useState(null)
 
+  /* --------------------------- Modal de Edição -------------------------- */
+  const [modalOpen, setModalOpen] = useState(false)
+  const [modalFrameIndex, setModalFrameIndex] = useState(null)
+  const [modalPrompt, setModalPrompt] = useState('')
+  const [modalPreviewFrame, setModalPreviewFrame] = useState(null)
+  const [modalApplyingSingle, setModalApplyingSingle] = useState(false)
+  const [modalApplyingAll, setModalApplyingAll] = useState(false)
+
   /* ----------------------------- Avisos --------------------------------- */
   const [elapsed, setElapsed] = useState(0)
   const [toasts, setToasts] = useState([])
@@ -362,6 +371,19 @@ export default function MainDashboard() {
     const id = window.setInterval(() => setTick((value) => value + 1), interval)
     return () => window.clearInterval(id)
   }, [playing, fps])
+
+  /* -------------------- Limpeza ao mudar inputs da coluna esquerda -------------------- */
+  useEffect(() => {
+    if (frames.length === 0) return
+    // Qualquer alteração nos inputs de configuração invalida a geração anterior,
+    // forçando o usuário a regenerar do zero com os novos parâmetros.
+    setFrames([])
+    setCorrectionFrame(null)
+    setCorrectionPrompt('')
+    setGenerationError('')
+    setTick(0)
+    setModalOpen(false)
+  }, [provider, modelId, appearance, artStyle, reference, columns, rows, autoSlice])
 
   /* ------------------------ Cronômetro ---------------------------------- */
   useEffect(() => {
@@ -554,7 +576,10 @@ export default function MainDashboard() {
 
   const handleEditFrame = useCallback((index) => {
     setCorrectionError('')
-    setCorrectionFrame((current) => (current === index ? null : index))
+    setModalOpen(true)
+    setModalFrameIndex(index)
+    setModalPrompt('')
+    setModalPreviewFrame(null)
   }, [])
 
   const handleApplyCorrection = useCallback(async () => {
@@ -649,6 +674,173 @@ export default function MainDashboard() {
     correcting,
     correctionFrame,
     correctionPrompt,
+    frames,
+    modelId,
+    provider,
+    pushToast,
+    referenceFrames,
+  ])
+
+  /* --------------------------- Modal: correção individual -------------------------- */
+  const handleModalApplySingle = useCallback(async () => {
+    if (
+      modalApplyingSingle ||
+      modalApplyingAll ||
+      modalFrameIndex === null ||
+      frames.length === 0
+    )
+      return
+    if (!modalPrompt.trim()) {
+      pushToast('Escreva a instrução de correção antes de aplicar.', 'warning')
+      return
+    }
+    if (!apiKey.trim() || !modelId) {
+      pushToast('Valide a chave e escolha um modelo antes de corrigir.', 'warning')
+      return
+    }
+
+    const index = modalFrameIndex
+    const previousImages = [frames[index]]
+    const referenceImages = referenceFrames.slice(0, MAX_REFERENCE_FRAMES)
+
+    try {
+      ensurePayloadSize([...previousImages, ...referenceImages])
+    } catch (error) {
+      pushToast(describeApiError(error), 'error')
+      return
+    }
+
+    setModalApplyingSingle(true)
+    setCorrectionError('')
+
+    try {
+      const result = await generateSprites({
+        provider,
+        apiKey: apiKey.trim(),
+        modelId,
+        referenceImages,
+        characterAppearance: appearance.trim(),
+        artStyle: artStyle.trim(),
+        previousImages,
+        correctionPrompt: modalPrompt.trim(),
+        targetFrameIndex: index,
+      })
+
+      if (result.images.length === 0) {
+        throw new Error(
+          'A IA não retornou nenhuma imagem corrigida. Tente novamente.',
+        )
+      }
+
+      setFrames((current) =>
+        current.map((frame, position) =>
+          position === index ? result.images[0] : frame,
+        ),
+      )
+      setModalPreviewFrame(result.images[0])
+      setModalPrompt('')
+      pushToast(
+        `Frame #${index + 1} corrigido sem alterar os demais.`,
+        'success',
+      )
+    } catch (error) {
+      const message = describeApiError(error)
+      setCorrectionError(message)
+      pushToast(message, 'error')
+      console.error('[modal single correction]', error)
+    } finally {
+      setModalApplyingSingle(false)
+    }
+  }, [
+    apiKey,
+    appearance,
+    artStyle,
+    modalApplyingAll,
+    modalApplyingSingle,
+    modalFrameIndex,
+    modalPrompt,
+    frames,
+    modelId,
+    provider,
+    pushToast,
+    referenceFrames,
+  ])
+
+  /* --------------------------- Modal: correção em lote -------------------------- */
+  const handleModalApplyAll = useCallback(async () => {
+    if (
+      modalApplyingAll ||
+      modalApplyingSingle ||
+      frames.length === 0
+    )
+      return
+    if (!modalPrompt.trim()) {
+      pushToast('Escreva a instrução de correção antes de aplicar.', 'warning')
+      return
+    }
+    if (!apiKey.trim() || !modelId) {
+      pushToast('Valide a chave e escolha um modelo antes de corrigir.', 'warning')
+      return
+    }
+
+    const previousImages = frames.slice(0, MAX_PREVIOUS_FRAMES)
+    const referenceImages = referenceFrames.slice(0, MAX_REFERENCE_FRAMES)
+
+    try {
+      ensurePayloadSize([...previousImages, ...referenceImages])
+    } catch (error) {
+      pushToast(describeApiError(error), 'error')
+      return
+    }
+
+    setModalApplyingAll(true)
+    setCorrectionError('')
+
+    try {
+      const result = await generateSprites({
+        provider,
+        apiKey: apiKey.trim(),
+        modelId,
+        referenceImages,
+        characterAppearance: appearance.trim(),
+        artStyle: artStyle.trim(),
+        previousImages,
+        correctionPrompt: modalPrompt.trim(),
+        targetFrameIndex: null,
+      })
+
+      if (result.images.length === 0) {
+        throw new Error(
+          'A IA não retornou nenhuma imagem corrigida. Tente novamente.',
+        )
+      }
+
+      setFrames((current) => {
+        if (result.images.length === current.length) return result.images
+        // Resposta parcial: mantém os frames que a IA não devolveu.
+        return current.map((frame, position) => result.images[position] ?? frame)
+      })
+      setModalPreviewFrame(result.images[0] ?? null)
+      setModalPrompt('')
+      pushToast(
+        `${result.images.length} frame${result.images.length === 1 ? '' : 's'} corrigido${result.images.length === 1 ? '' : 's'} em lote.`,
+        'success',
+      )
+    } catch (error) {
+      const message = describeApiError(error)
+      setCorrectionError(message)
+      pushToast(message, 'error')
+      console.error('[modal batch correction]', error)
+    } finally {
+      setModalApplyingAll(false)
+    }
+  }, [
+    apiKey,
+    appearance,
+    artStyle,
+    modalApplyingAll,
+    modalApplyingSingle,
+    modalPrompt,
     frames,
     modelId,
     provider,
@@ -752,7 +944,7 @@ export default function MainDashboard() {
             referenceBusy={referenceBusy}
             elapsed={elapsed}
             onEditFrame={handleEditFrame}
-            editingFrame={correctionFrame}
+            editingFrame={modalOpen ? modalFrameIndex : null}
             generationError={generationError}
           />
         </section>
@@ -763,9 +955,12 @@ export default function MainDashboard() {
             onPromptChange={setCorrectionPrompt}
             onApply={handleApplyCorrection}
             busy={correcting}
-            disabled={generating}
-            editingFrame={correctionFrame}
-            onClearEditing={() => setCorrectionFrame(null)}
+            disabled={generating || modalOpen}
+            editingFrame={modalOpen ? modalFrameIndex : correctionFrame}
+            onClearEditing={() => {
+              setCorrectionFrame(null)
+              setModalOpen(false)
+            }}
             frameCount={frames.length}
             error={correctionError}
             elapsed={elapsed}
@@ -798,6 +993,24 @@ export default function MainDashboard() {
       </main>
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
+
+      <FrameEditModal
+        open={modalOpen}
+        onClose={() => {
+          setModalOpen(false)
+          setCorrectionFrame(null)
+        }}
+        frameIndex={modalFrameIndex ?? 0}
+        originalFrame={referenceFrames[modalFrameIndex ?? 0] ?? ''}
+        currentFrame={frames[modalFrameIndex ?? 0] ?? ''}
+        previewFrame={modalPreviewFrame}
+        correctionPrompt={modalPrompt}
+        onPromptChange={setModalPrompt}
+        onApplySingle={handleModalApplySingle}
+        onApplyAll={handleModalApplyAll}
+        applyingSingle={modalApplyingSingle}
+        applyingAll={modalApplyingAll}
+      />
     </>
   )
 }
