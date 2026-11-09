@@ -242,6 +242,51 @@ Enquanto a interface principal ainda não consome a API, use
 A chave fica apenas na memória da aba: não é salva no navegador nem enviada
 para outro lugar além do backend do próprio projeto.
 
+## 🎨 Pipeline local de imagens
+
+`src/utils/imagePipeline.js` concentra o tratamento de imagens que roda
+**inteiramente no navegador** (Canvas API), sem custo de servidor. Todas as
+funções devolvem Data URLs PNG (ou um `Blob` de GIF) e lançam
+`ImagePipelineError` com um `code` estável.
+
+```js
+import {
+  sliceSpritesheet,
+  alignBoundingBox,
+  compileSpritesheetGrid,
+  exportGIF,
+} from './utils/imagePipeline'
+
+// 1. separa a spritesheet gerada pela IA (4 colunas × 2 linhas)
+const frames = await sliceSpritesheet(spritesheetFile, 4, 2)
+
+// 2. recentraliza cada frame (evita a animação "tremer")
+const aligned = await Promise.all(frames.map((frame) => alignBoundingBox(frame)))
+
+// 3. remonta a spritesheet final em grade para download
+const sheet = await compileSpritesheetGrid(aligned, 4)
+
+// 4. gera e baixa um GIF de preview a 8 FPS
+await exportGIF(aligned, 8)
+```
+
+- **`sliceSpritesheet(imageFile, columns, rows)`** — recorta a grade em frames
+  PNG transparentes, na ordem de leitura (linha a linha).
+- **`alignBoundingBox(base64Frame, options)`** — usa `getImageData()` para
+  achar a caixa dos pixels com alpha > 0 e recentraliza o sprite. Mantém o
+  tamanho original por padrão; `{ size: 64 }` padroniza em 64x64,
+  `{ anchor: 'bottom', padding: 2 }` apoia os pés no chão.
+- **`compileSpritesheetGrid(base64Frames, columns)`** — compila os frames em
+  uma grade única, com células do tamanho do maior frame e fundo transparente.
+- **`exportGIF(base64Frames, fps, options)`** — normaliza os frames para o
+  mesmo canvas, calcula uma paleta global com transparência de 1 bit (via
+  `gifenc`) e dispara o download (ou devolve o `Blob` com
+  `{ download: false }`).
+
+Os testes de navegador ficam em `tests/image-pipeline.html`: com `npm run dev`,
+abra `http://localhost:5173/tests/image-pipeline.html` (22 verificações de
+recorte, alinhamento, compilação, GIF e erros).
+
 ## ☁️ Deploy na Vercel
 
 1. Suba o repositório para o GitHub.

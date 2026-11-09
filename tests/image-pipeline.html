@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Testes do pipeline de imagens</title>
+<style>
+  body { background:#0b0f17; color:#e8eefc; font-family:ui-monospace, Consolas, monospace; padding:24px; }
+  pre { white-space:pre-wrap; line-height:1.6; }
+  .ok { color:#34d399; }
+  .err { color:#f87171; }
+</style>
+</head>
+<body>
+<h1>Testes do pipeline de imagens</h1>
+<pre id="out">rodando…</pre>
+<script type="module">
+import {
+  ImagePipelineError,
+  alignBoundingBox,
+  compileSpritesheetGrid,
+  dataUrlToBlob,
+  exportGIF,
+  sliceSpritesheet,
+} from '/src/utils/imagePipeline.js'
+
+const out = document.getElementById('out')
+const results = { passed: 0, failed: 0, details: [] }
+
+function log(message, kind = '') {
+  const line = document.createElement('div')
+  if (kind) line.className = kind
+  line.textContent = message
+  out.appendChild(line)
+}
+
+function check(name, condition, extra = '') {
+  if (condition) {
+    results.passed += 1
+    results.details.push({ name, ok: true, extra })
+    log(`PASS ${name}${extra ? ` — ${extra}` : ''}`, 'ok')
+  } else {
+    results.failed += 1
+    results.details.push({ name, ok: false, extra })
+    log(`FAIL ${name}${extra ? ` — ${extra}` : ''}`, 'err')
+  }
+}
+
+function loadImage(dataUrl) {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => resolve(image)
+    image.onerror = () => reject(new Error('imagem inválida'))
+    image.src = dataUrl
+  })
+}
+
+async function dimensions(dataUrl) {
+  const image = await loadImage(dataUrl)
+  return { width: image.naturalWidth, height: image.naturalHeight }
+}
+
+async function alphaBox(dataUrl) {
+  const image = await loadImage(dataUrl)
+  const canvas = document.createElement('canvas')
+  canvas.width = image.naturalWidth
+  canvas.height = image.naturalHeight
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  ctx.drawImage(image, 0, 0)
+  const { data, width, height } = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  let minX = width, minY = height, maxX = -1, maxY = -1
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (data[(y * width + x) * 4 + 3] > 8) {
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+  if (maxX < 0) return null
+  return {
+    width: maxX - minX + 1,
+    height: maxY - minY + 1,
+    minX,
+    minY,
+    maxX,
+    maxY,
+    centerX: (minX + maxX) / 2,
+    centerY: (minY + maxY) / 2,
+  }
+}
+
+function makeSpritesheet(columns, rows, cell) {
+  const canvas = document.createElement('canvas')
+  canvas.width = columns * cell
+  canvas.height = rows * cell
+  const ctx = canvas.getContext('2d')
+  const colors = ['#ff4444', '#44ff88', '#4488ff', '#ffdd44']
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const x = column * cell + 5 + ((row + column) % 4)
+      const y = row * cell + 4 + (column % 5)
+      ctx.fillStyle = colors[(row * columns + column) % colors.length]
+      ctx.fillRect(x, y, 6, 10)
+      ctx.fillStyle = '#ffffff'
+      ctx.fillRect(x + 1, y + 8, 2, 2)
+    }
+  }
+  return canvas.toDataURL('image/png')
+}
+
+async function expectCode(name, promise, code) {
+  try {
+    await promise
+    check(name, false, 'não lançou erro')
+  } catch (error) {
+    check(
+      name,
+      error instanceof ImagePipelineError && error.code === code,
+      `${error.name}/${error.code || 'sem-código'}`,
+    )
+  }
+}
+
+async function run() {
+  // ---------- preparação ----------
+  const sheetUrl = makeSpritesheet(4, 2, 32)
+  const sheetBlob = dataUrlToBlob(sheetUrl)
+  check('dataUrlToBlob', sheetBlob.type === 'image/png' && sheetBlob.size > 0)
+
+  // ---------- 1) sliceSpritesheet ----------
+  const frames = await sliceSpritesheet(sheetBlob, 4, 2)
+  check('sliceSpritesheet devolve 8 frames', frames.length === 8, String(frames.length))
+
+  const frameSizes = await Promise.all(frames.map(dimensions))
+  check(
+    'todos os frames têm 32x32',
+    frameSizes.every((size) => size.width === 32 && size.height === 32),
+    JSON.stringify([...new Set(frameSizes.map((s) => `${s.width}x${s.height}`))]),
+  )
+  check(
+    'frames são PNG em Data URL',
+    frames.every((frame) => frame.startsWith('data:image/png;base64,')),
+  )
+
+  // ---------- 2) alignBoundingBox ----------
+  const originalBox = await alphaBox(frames[0])
+  const aligned = await alignBoundingBox(frames[0])
+  const alignedSize = await dimensions(aligned)
+  const alignedBox = await alphaBox(aligned)
+
+  check('alinhamento mantém 32x32', alignedSize.width === 32 && alignedSize.height === 32)
+  check(
+    'alinhamento preserva o tamanho do sprite',
+    alignedBox && originalBox
+      && alignedBox.width === originalBox.width
+      && alignedBox.height === originalBox.height,
+    originalBox ? `${originalBox.width}x${originalBox.height}` : 'sem bbox',
+  )
+  check(
+    'sprite fica centralizado (32x32)',
+    alignedBox
+      && Math.abs(alignedBox.centerX - 15.5) <= 1
+      && Math.abs(alignedBox.centerY - 15.5) <= 1,
+    alignedBox ? `centro ${alignedBox.centerX},${alignedBox.centerY}` : 'sem bbox',
+  )
+
+  const aligned64 = await alignBoundingBox(frames[0], { size: 64 })
+  const aligned64Size = await dimensions(aligned64)
+  const aligned64Box = await alphaBox(aligned64)
+  check('size=64 gera canvas 64x64', aligned64Size.width === 64 && aligned64Size.height === 64)
+  check(
+    'size=64 reescala o sprite em 2x',
+    aligned64Box
+      && aligned64Box.width === originalBox.width * 2
+      && aligned64Box.height === originalBox.height * 2,
+    aligned64Box ? `${aligned64Box.width}x${aligned64Box.height}` : 'sem bbox',
+  )
+
+  const anchored = await alignBoundingBox(frames[0], { anchor: 'bottom', padding: 2 })
+  const anchoredBox = await alphaBox(anchored)
+  check(
+    'anchor=bottom apoia o sprite no rodapé',
+    anchoredBox && anchoredBox.maxY === 29,
+    anchoredBox ? `maxY ${anchoredBox.maxY}` : 'sem bbox',
+  )
+
+  // ---------- 3) compileSpritesheetGrid ----------
+  const compiled = await compileSpritesheetGrid(frames, 4)
+  const compiledSize = await dimensions(compiled)
+  check(
+    'compileSpritesheetGrid monta grade 4x2 (128x64)',
+    compiledSize.width === 128 && compiledSize.height === 64,
+    `${compiledSize.width}x${compiledSize.height}`,
+  )
+  check('spritesheet compilada é PNG', compiled.startsWith('data:image/png;base64,'))
+
+  // ---------- 4) exportGIF ----------
+  const gif = await exportGIF(frames.slice(0, 4), 12, { download: false })
+  const bytes = new Uint8Array(await gif.arrayBuffer())
+  const signature = String.fromCharCode(...bytes.slice(0, 6))
+  const gifWidth = bytes[6] | (bytes[7] << 8)
+  const gifHeight = bytes[8] | (bytes[9] << 8)
+  check('exportGIF devolve image/gif', gif.type === 'image/gif', gif.type)
+  check('GIF tem assinatura válida', signature === 'GIF89a' || signature === 'GIF87a', signature)
+  check('GIF tem tamanho > 100 bytes', gif.size > 100, `${gif.size} bytes`)
+  check('GIF tem 32x32', gifWidth === 32 && gifHeight === 32, `${gifWidth}x${gifHeight}`)
+
+  // ---------- erros ----------
+  await expectCode(
+    'colunas inválidas',
+    sliceSpritesheet(sheetBlob, 0, 2),
+    'INVALID_ARGUMENT',
+  )
+  await expectCode(
+    'grade impossível',
+    sliceSpritesheet(sheetBlob, 200, 100),
+    'INVALID_GRID',
+  )
+
+  const emptyCanvas = document.createElement('canvas')
+  emptyCanvas.width = 16
+  emptyCanvas.height = 16
+  await expectCode(
+    'frame vazio',
+    alignBoundingBox(emptyCanvas.toDataURL('image/png')),
+    'EMPTY_FRAME',
+  )
+
+  await expectCode('lista de frames vazia', compileSpritesheetGrid([], 4), 'EMPTY_FRAMES')
+  await expectCode('fps inválido', exportGIF(frames, 0), 'INVALID_ARGUMENT')
+  await expectCode('entrada inválida', sliceSpritesheet(null, 2, 2), 'INVALID_IMAGE')
+
+  const summary = `${results.passed} passaram, ${results.failed} falharam`
+  log(`\n${summary}`, results.failed ? 'err' : 'ok')
+  window.__testResults = { ...results, summary }
+  window.__testsDone = true
+}
+
+run().catch((error) => {
+  results.failed += 1
+  results.details.push({ name: 'execução', ok: false, extra: String(error) })
+  log(`ERRO FATAL: ${error?.stack || error}`, 'err')
+  window.__testResults = { ...results, summary: 'erro fatal' }
+  window.__testsDone = true
+})
+</script>
+</body>
+</html>
