@@ -227,6 +227,21 @@ Códigos comuns: `invalid_api_key`, `quota_exhausted`, `rate_limit`,
 `too_many_images`, `payload_too_large`, `invalid_image` e
 `target_frame_index_out_of_range`.
 
+### Página de teste (laboratório)
+
+Enquanto a interface principal ainda não consome a API, use
+`/laboratorio-api.html` (também disponível em produção, ex.:
+`https://spritetransfer-web.vercel.app/laboratorio-api.html`). Ela permite:
+
+1. colar a chave e validar/listar os modelos do provedor;
+2. anexar as imagens de referência de pose (redimensionadas para 512 px para
+   caber no limite da Vercel);
+3. anexar os frames anteriores e escrever a instrução de correção;
+4. gerar/corrigir e baixar as imagens retornadas.
+
+A chave fica apenas na memória da aba: não é salva no navegador nem enviada
+para outro lugar além do backend do próprio projeto.
+
 ## ☁️ Deploy na Vercel
 
 1. Suba o repositório para o GitHub.
