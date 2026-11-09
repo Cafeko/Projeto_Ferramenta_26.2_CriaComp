@@ -126,6 +126,107 @@ O botão **“Testar health check”** no cabeçalho chama `GET /api/health`.
 Em desenvolvimento, o Vite faz proxy de `/api` para a porta `8000`, então não
 há CORS nem variáveis de ambiente obrigatórias.
 
+## 🔌 API de geração (BYOK)
+
+O backend é um intermediário sem estado entre o frontend e os provedores. A
+chave enviada em cada requisição é usada apenas em memória para chamar o
+provedor escolhido; ela **não é gravada nem registrada em log**.
+
+Provedores aceitos: `gemini`, `openai`, `openrouter` e `replicate`.
+
+### `POST /api/models`
+
+Valida a chave e devolve os modelos de imagem/visão disponíveis. Quando o
+provedor não permite uma listagem simples (caso do Replicate), a resposta traz
+uma lista segura de modelos recomendados e `source: "fallback"`.
+
+```json
+{
+  "provider": "gemini",
+  "api_key": "SUA_CHAVE"
+}
+```
+
+Resposta:
+
+```json
+{
+  "provider": "gemini",
+  "source": "remote",
+  "models": [
+    {
+      "id": "gemini-nano-banana-2.1",
+      "name": "Nano Banana 2.1",
+      "description": "Geração e edição de imagens...",
+      "supports_reference_images": true
+    }
+  ],
+  "warning": null
+}
+```
+
+### `POST /api/generate`
+
+```json
+{
+  "provider": "gemini",
+  "api_key": "SUA_CHAVE",
+  "model_id": "gemini-nano-banana-2.1",
+  "reference_images": ["<base64 ou data URL>"],
+  "character_appearance": "Cavaleira de armadura azul, cabelo curto...",
+  "art_style": "Pixel art 16-bit, paleta limitada, contorno grosso",
+  "previous_generated_images": [],
+  "correction_prompt": null,
+  "target_frame_index": null
+}
+```
+
+- **Geração do zero** (`correction_prompt` ausente): as `reference_images` são
+  usadas como referência de pose/movimento. Com mais de um frame, o prompt pede
+  uma spritesheet horizontal na mesma ordem das referências.
+- **Correção** (`correction_prompt` presente): as `previous_generated_images`
+  são a fonte de verdade visual. Se `target_frame_index` for informado, apenas
+  aquele frame é corrigido (índice começa em `0`); caso contrário, a correção é
+  aplicada a todos os frames.
+- **Formatos de imagem**: Base64 puro ou data URL (`data:image/png;base64,...`).
+  O backend detecta o MIME real (PNG, JPEG, WebP, GIF ou BMP).
+- **Limite de corpo**: a Vercel aceita ~4,5 MB por requisição. Reduza a
+  resolução/quantidade de frames antes de enviar.
+
+Resposta:
+
+```json
+{
+  "provider": "gemini",
+  "model_id": "gemini-nano-banana-2.1",
+  "mode": "generation",
+  "target_frame_index": null,
+  "images": ["<base64>"],
+  "mime_types": ["image/png"]
+}
+```
+
+Para exibir no frontend:
+`data:${mime_types[i]};base64,${images[i]}`.
+
+### Erros
+
+Todas as falhas previstas voltam com uma mensagem em português e um `code`:
+
+```json
+{
+  "detail": "Chave de API inválida ou sem permissão no OpenAI. Confira a chave...",
+  "code": "invalid_api_key",
+  "provider": "openai",
+  "provider_status": 401
+}
+```
+
+Códigos comuns: `invalid_api_key`, `quota_exhausted`, `rate_limit`,
+`provider_timeout`, `no_image_returned`, `model_without_image_input`,
+`too_many_images`, `payload_too_large`, `invalid_image` e
+`target_frame_index_out_of_range`.
+
 ## ☁️ Deploy na Vercel
 
 1. Suba o repositório para o GitHub.
@@ -175,9 +276,20 @@ npm run vercel:dev   # equivale a: vercel dev --local
 
 ## 🔐 Observações
 
-- Chaves de IA (**BYOK**) nunca devem ir para o bundle do frontend. Use
-  variáveis de ambiente na Vercel e leia-as apenas em `api/` (via `os.getenv`).
+- **BYOK**: as chaves são enviadas pelo frontend a cada chamada de
+  `/api/models` ou `/api/generate` e usadas apenas em memória no backend. Não
+  coloque chaves em variáveis `VITE_*`: tudo que começa com `VITE_` vai para o
+  bundle público.
+- O backend não guarda histórico de imagens. O frontend deve manter os frames
+  anteriores e reenviá-los em `previous_generated_images` ao corrigir.
+- A geração pode levar dezenas de segundos. O `vercel.json` configura
+  `maxDuration: 300` para a função do backend; o Replicate é acompanhado por
+  polling com limite próprio (`REPLICATE_TIMEOUT_SECONDS`, padrão 200 s).
 - A Vercel usa **Python 3.12** por padrão nas Functions; o `requirements.txt`
   já está compatível com 3.12+.
 - `CORS_ORIGINS` é opcional e só é necessário se o frontend for servido de
   outro domínio.
+- Timeouts e limites podem ser ajustados por variáveis de ambiente:
+  `PROVIDER_CONNECT_TIMEOUT_SECONDS`, `PROVIDER_READ_TIMEOUT_SECONDS`,
+  `MAX_INPUT_IMAGE_BYTES`, `MAX_OUTPUT_IMAGE_BYTES` e
+  `REPLICATE_TIMEOUT_SECONDS`.
