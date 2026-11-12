@@ -675,7 +675,7 @@ def _order_text(visuals: Iterable[VisualInput]) -> str:
 
 def _generation_body(request: GenerateRequest, frame_count: int) -> str:
     character = request.character_appearance or (
-        "Use the character design from the reference images as the source of truth."
+        "A generic 2D game character."
     )
     style = request.art_style or (
         "Clean 16-bit pixel art with crisp 1-pixel outlines, a limited cohesive "
@@ -690,8 +690,9 @@ def _generation_body(request: GenerateRequest, frame_count: int) -> str:
             "extra panels. Every frame must use the same canvas size, character "
             "scale, ground line and palette.\n"
             "CRITICAL: Each frame in the sprite sheet must show a DIFFERENT phase "
-            "of the walk cycle. Frame 1 = reference pose 1, frame 2 = reference "
-            "pose 2, etc. Do NOT repeat the same pose in multiple frames."
+            "of the motion. Frame 1 = reference pose 1, frame 2 = reference pose 2, "
+            "etc. Do NOT repeat the same pose in multiple frames. Do NOT add extra "
+            "frames beyond the reference count."
         )
     else:
         output_rule = (
@@ -701,37 +702,72 @@ def _generation_body(request: GenerateRequest, frame_count: int) -> str:
 
     if frame_count:
         task = (
-            "TASK: Create a new 2D game sprite animation by transferring the MOTION "
-            "from the pose-reference images to the character described below. The "
-            "references define timing, silhouette, body orientation, camera angle, "
-            "limb positions and spacing. Do NOT copy the reference character's "
-            "identity, clothing, colors or art style unless explicitly requested."
+            "TASK: Generate a new 2D game sprite animation by transferring ONLY the "
+            "MOTION from the POSE REFERENCE images onto the CHARACTER APPEARANCE "
+            "described below.\n"
+            "ROLE SEPARATION (read carefully):\n"
+            "1) POSE REFERENCE = motion/pose/silhouette/camera angle ONLY. It tells "
+            "   HOW the character moves and from which angle it is viewed. It does "
+            "   NOT define identity, clothing, colors, proportions, or art style.\n"
+            "2) CHARACTER APPEARANCE = who the character is (clothing, colors, "
+            "   proportions, hair, equipment, etc.). Fit these visual traits INTO the "
+            "   poses shown by the references.\n"
+            "3) ART STYLE = the rendering style of the final image. It overrides any "
+            "   conflicting visual detail.\n"
         )
     else:
         task = (
-            "TASK: Create a new 2D game sprite for the character described below. "
+            "TASK: Generate a new 2D game sprite for the character described below. "
             "No pose reference was provided, so use a clear neutral idle pose."
         )
 
     return f"""{task}
 
-CHARACTER APPEARANCE (MUST FOLLOW EXACTLY):
+CHARACTER APPEARANCE (fit into the reference poses):
 {character}
 
-ART STYLE (MUST FOLLOW EXACTLY - this is not optional):
+ART STYLE (MANDATORY - overrides any conflicting detail):
 {style}
 
 {output_rule}
 
+ROLE RULES (strict):
+- POSE REFERENCE images define ONLY pose, motion timing, silhouette, body
+  orientation, camera angle, limb positions and spacing. Copy the POSE exactly,
+  but NEVER copy the reference character's identity, clothing, colors or art
+  style. If the user uploaded their own sprite/spritesheet, treat it as pose/
+  movement and camera-angle reference only; its pixel-art style must not bleed
+  into the final image.
+- CHARACTER APPEARANCE describes how the character looks. Place these traits onto
+  the reference poses. Only include characteristics that make sense for the shown
+  pose: e.g. if the character has something on its back but the reference shows
+  the character front-facing, the back detail must not appear. If the art style is
+  too simple for fine details, drop smaller details rather than muddying the
+  pixel art.
+- ART STYLE governs the final look. Respect its limitations and particularities:
+  e.g. if the character is described with a colorful shirt but the art style is
+  black and white, the final image MUST be black and white. If the style limits
+  the palette, obey the limit even if the appearance description asks for more
+  colors.
+- Merge the three inputs into one coherent result: correct motion from the
+  references, correct look from the appearance, correct rendering from the art
+  style.
+
 CONSISTENCY RULES:
-- Keep the same character design, proportions, palette, outline thickness and pixel density in every frame.
-- Preserve the pose and silhouette of each reference frame as closely as possible. Each frame must match its corresponding reference pose.
+- Keep the same character design, proportions, palette, outline thickness and
+  pixel density in every frame.
+- Preserve the pose and silhouette of each reference frame as closely as possible.
+  Each frame must match its corresponding reference pose.
 - Show the full body without cropping the feet, hands or head.
 - Keep the character centered and at the same relative scale in every frame.
-- Isolate the sprite on a completely flat, uniform background. If the model supports transparency, use a transparent background; otherwise use a single solid chroma-key color (pure magenta #FF00FF) with no shadows, gradients, texture or scenery.
-- No text, no watermark, no UI, no speech bubbles, no extra characters and no background objects.
-- Pixel art only: hard edges, no anti-aliasing, no blur, no noise and no 3D rendering.
-- The art style description above is MANDATORY. Apply it to every pixel of every frame."""
+- Isolate the sprite on a completely flat, uniform background. If the model
+  supports transparency, use a transparent background; otherwise use a single
+  solid chroma-key color (pure magenta #FF00FF) with no shadows, gradients,
+  texture or scenery.
+- No text, no watermark, no UI, no speech bubbles, no extra characters and no
+  background objects.
+- Pixel art only: hard edges, no anti-aliasing, no blur, no noise and no 3D
+  rendering."""
 
 
 def _correction_body(
