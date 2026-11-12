@@ -1,32 +1,32 @@
 import {
+  ChevronLeft,
+  ChevronRight,
   Film,
   ImageOff,
-  Loader2,
-  Pause,
-  Pencil,
-  Play,
-  Scan,
-  Sparkles,
+  LayoutGrid,
+  Maximize,
+  RefreshCw,
+  Square,
 } from 'lucide-react'
 
 import { formatElapsed } from '../../lib/api'
 import { Alert, Card, Pill } from './ui'
 
 /**
- * Um dos lados do player (referência ou resultado).
+ * Um dos lados do player (referência ou resultado) para UM frame.
  *
  * @param {{
  *   label: string,
  *   accent: 'slate' | 'cyan',
- *   frames: string[],
- *   index: number,
+ *   frame: string | null,
+ *   frameIndex: number,
+ *   totalFrames: number,
  *   loading: boolean,
  *   loadingLabel: string,
  *   emptyLabel: string,
  * }} props
  */
-function Player({ label, accent, frames, index, loading, loadingLabel, emptyLabel }) {
-  const current = frames.length > 0 ? frames[index % frames.length] : null
+function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loadingLabel, emptyLabel }) {
   const accentUi =
     accent === 'cyan'
       ? 'border-cyan-400/25 bg-cyan-400/[0.04]'
@@ -40,31 +40,31 @@ function Player({ label, accent, frames, index, loading, loadingLabel, emptyLabe
             accent === 'cyan' ? 'text-cyan-300' : 'text-slate-400'
           }`}
         >
-          {accent === 'cyan' ? <Sparkles className="size-3.5" /> : <Scan className="size-3.5" />}
+          {accent === 'cyan' ? <Maximize className="size-3.5" /> : <LayoutGrid className="size-3.5" />}
           {label}
         </span>
         <span className="font-mono text-[10px] text-slate-500">
-          {frames.length > 0 ? `${(index % frames.length) + 1}/${frames.length}` : '—'}
+          {totalFrames > 0 ? `${(frameIndex % totalFrames) + 1}/${totalFrames}` : '—'}
         </span>
       </div>
 
-      <div className="bg-checkerboard relative grid h-52 place-items-center overflow-hidden rounded-lg border border-white/5 sm:h-60">
-        {current ? (
+      <div className="bg-checkerboard relative grid h-64 place-items-center overflow-hidden rounded-lg border border-white/5 sm:h-72">
+        {frame ? (
           <img
-            src={current}
+            src={frame}
             alt={label}
-            className="pixelated h-full w-full object-contain"
+            className="pixelated max-h-full max-w-full object-contain"
           />
         ) : (
-          <div className="flex max-w-[80%] flex-col items-center gap-1.5 text-center">
+          <div className="flex max-w-[80%] flex-col items-center justify-center text-center">
             <ImageOff className="size-6 text-slate-600" />
-            <p className="text-[11px] leading-relaxed text-slate-500">{emptyLabel}</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{emptyLabel}</p>
           </div>
         )}
 
         {loading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-canvas/80 backdrop-blur-sm">
-            <Loader2 className="size-6 animate-spin text-cyan-300" />
+            <span className="size-6 animate-spin text-cyan-300" />
             <p className="text-[11px] font-medium text-cyan-200">{loadingLabel}</p>
           </div>
         )}
@@ -74,22 +74,22 @@ function Player({ label, accent, frames, index, loading, loadingLabel, emptyLabe
 }
 
 /**
- * Coluna central: player lado a lado + filmstrip.
+ * Coluna central: frames lado a lado com navegação frame a frame.
  *
  * @param {{
  *   referenceFrames: string[],
  *   frames: string[],
  *   fps: number,
  *   onFpsChange: (value: number) => void,
- *   playing: boolean,
- *   onTogglePlay: () => void,
- *   tick: number,
+ *   viewMode: 'loop' | 'frame-by-frame',
+ *   onViewModeChange: (value: 'loop' | 'frame-by-frame') => void,
+ *   currentFrameIndex: number,
+ *   onCurrentFrameIndexChange: (value: number) => void,
  *   generating: boolean,
  *   referenceBusy: boolean,
- *   elapsed: number,
+ *   generationError: string,
  *   onEditFrame: (index: number) => void,
  *   editingFrame: number | null,
- *   generationError: string,
  * }} props
  */
 export default function PreviewPanel({
@@ -97,103 +97,134 @@ export default function PreviewPanel({
   frames,
   fps,
   onFpsChange,
-  playing,
-  onTogglePlay,
-  tick,
+  viewMode,
+  onViewModeChange,
+  currentFrameIndex,
+  onCurrentFrameIndexChange,
   generating,
   referenceBusy,
-  elapsed,
+  generationError,
   onEditFrame,
   editingFrame,
-  generationError,
 }) {
+  const totalFrames = Math.max(referenceFrames.length, frames.length)
   const hasFrames = frames.length > 0
+  const hasReference = referenceFrames.length > 0
 
   return (
     <div className="space-y-4">
       <Card
-        title="Preview da Animação"
-        subtitle="Referência e resultado rodando em loop"
-        icon={Play}
+        title="Frames Lado a Lado"
+        subtitle="Frame original vs. novo — navegue quadro a quadro"
+        icon={LayoutGrid}
         badge={
-          <Pill tone={playing ? 'green' : 'neutral'}>
+          <Pill tone={viewMode === 'loop' ? 'green' : 'neutral'}>
             <span
-              className={`size-1.5 rounded-full ${playing ? 'animate-pulse bg-emerald-400' : 'bg-slate-500'}`}
+              className={`size-1.5 rounded-full ${
+                viewMode === 'loop' ? 'animate-pulse bg-emerald-400' : 'bg-slate-500'
+              }`}
             />
-            {playing ? 'loop' : 'pausado'}
+            {viewMode === 'loop' ? 'loop' : 'frame a frame'}
           </Pill>
         }
         bodyClassName="p-3.5"
       >
+        {/* Controles de navegação */}
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onCurrentFrameIndexChange(Math.max(0, currentFrameIndex - 1))}
+              disabled={currentFrameIndex === 0 || totalFrames === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-semibold text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft className="size-4" />
+              Anterior
+            </button>
+            <button
+              type="button"
+              onClick={() => onCurrentFrameIndexChange(Math.min(totalFrames - 1, currentFrameIndex + 1))}
+              disabled={currentFrameIndex >= totalFrames - 1 || totalFrames === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-semibold text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Próximo
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-semibold text-slate-400 uppercase">Quadro</span>
+            <input
+              type="number"
+              min={1}
+              max={Math.max(1, totalFrames)}
+              value={currentFrameIndex + 1}
+              onChange={(event) => {
+                const v = Number.parseInt(event.target.value, 10)
+                if (!Number.isNaN(v) && v >= 1 && v <= Math.max(1, totalFrames)) {
+                  onCurrentFrameIndexChange(v - 1)
+                }
+              }}
+              className="w-12 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-slate-100 focus:border-cyan-400/60 focus:outline-none"
+            />
+            <span className="text-[11px] text-slate-500">de {Math.max(1, totalFrames)}</span>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => onViewModeChange((v) => (v === 'loop' ? 'frame-by-frame' : 'loop'))}
+              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[11px] font-semibold transition ${
+                viewMode === 'loop'
+                  ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
+                  : 'border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/25 hover:bg-white/[0.04]'
+              }`}
+            >
+              {viewMode === 'loop' ? <RefreshCw className="size-3.5" /> : <Square className="size-3.5" />}
+              {viewMode === 'loop' ? 'Loop' : 'Frame a frame'}
+            </button>
+          </div>
+        </div>
+
+        {/* Player de frames lado a lado */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Player
+          <FrameView
             label="Original"
             accent="slate"
-            frames={referenceFrames}
-            index={tick}
+            frame={referenceFrames.length > 0 ? referenceFrames[currentFrameIndex % referenceFrames.length] : null}
+            frameIndex={currentFrameIndex}
+            totalFrames={referenceFrames.length}
             loading={referenceBusy}
-            loadingLabel="Fatiando referência…"
-            emptyLabel="Escolha um preset ou envie uma imagem de referência."
+            loadingLabel="Processando referência…"
+            emptyLabel="Nenhuma referência de movimento."
           />
-          <Player
-            label="Nova animação"
+          <FrameView
+            label="Novo frame"
             accent="cyan"
-            frames={frames}
-            index={tick}
+            frame={frames.length > 0 ? frames[currentFrameIndex % frames.length] : null}
+            frameIndex={currentFrameIndex}
+            totalFrames={frames.length}
             loading={generating}
-            loadingLabel={`Gerando frames… ${formatElapsed(elapsed)}`}
-            emptyLabel="O resultado gerado aparece aqui, quadro a quadro."
+            loadingLabel="Gerando frame…"
+            emptyLabel="Gere um spritesheet para ver o resultado aqui."
           />
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-white/5 bg-black/25 px-3 py-2">
-          <button
-            type="button"
-            onClick={onTogglePlay}
-            disabled={!hasFrames && referenceFrames.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-md bg-white/5 px-2.5 py-1.5 text-[11px] font-semibold text-slate-200 transition hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-cyan-400/40 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label={playing ? 'Pausar animação' : 'Reproduzir animação'}
-          >
-            {playing ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
-            {playing ? 'Pausar' : 'Play'}
-          </button>
-
-          <label className="flex min-w-0 flex-1 items-center gap-2 text-[11px] text-slate-400">
-            <span className="shrink-0 font-semibold tracking-wide uppercase">FPS</span>
-            <input
-              type="range"
-              min={1}
-              max={24}
-              step={1}
-              value={fps}
-              onChange={(event) => onFpsChange(Number(event.target.value))}
-              className="h-1.5 min-w-0 flex-1 cursor-pointer accent-cyan-400"
-              aria-label="Quadros por segundo"
-            />
-            <span className="w-7 shrink-0 text-right font-mono text-[11px] text-cyan-300">
-              {fps}
-            </span>
-          </label>
-
-          <span className="ml-auto font-mono text-[10px] text-slate-500">
-            {referenceFrames.length} ref · {frames.length} gerados
-          </span>
-        </div>
+        {generationError && (
+          <Alert tone="error" className="mt-3">
+            {generationError}
+          </Alert>
+        )}
       </Card>
 
+      {/* Filmstrip */}
       <Card
         title="Filmstrip"
-        subtitle="Frames isolados em PNG"
+        subtitle="Todos os frames individuais"
         icon={Film}
         badge={<Pill tone={hasFrames ? 'cyan' : 'neutral'}>{frames.length} frames</Pill>}
         bodyClassName="p-3"
       >
-        {generationError && (
-          <Alert tone="error" className="mb-3">
-            {generationError}
-          </Alert>
-        )}
-
         {!hasFrames ? (
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-10 text-center">
             <Film className="size-7 text-slate-600" />
@@ -207,29 +238,37 @@ export default function PreviewPanel({
             </p>
           </div>
         ) : (
-          <div className="grid max-h-[360px] grid-cols-[repeat(auto-fill,minmax(100px,1fr))] gap-2 overflow-y-auto pr-1">
+          <div className="grid max-h-[300px] grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-2 overflow-y-auto pr-1">
             {frames.map((frame, index) => {
-              const editing = editingFrame === index
+              const isCurrent = index === currentFrameIndex
+              const isEditing = editingFrame === index
               return (
                 <figure
                   key={`${index}-${frame.slice(-24)}`}
                   className={`overflow-hidden rounded-lg border bg-black/20 transition ${
-                    editing
-                      ? 'border-cyan-400/70 shadow-md shadow-cyan-950/50'
+                    isCurrent
+                      ? 'border-cyan-400/70 shadow-md shadow-cyan-950/50 ring-1 ring-cyan-400'
                       : 'border-white/10 hover:border-white/25'
+                  } ${
+                    isEditing ? 'border-violet-400/70 shadow-violet-950/50' : ''
                   }`}
                 >
-                  <div className="bg-checkerboard relative grid aspect-square place-items-center p-1.5">
+                  <div className="bg-checkerboard relative grid aspect-square place-items-center p-1.5 cursor-pointer" onClick={() => onCurrentFrameIndexChange(index)}>
                     <img
                       src={frame}
                       alt={`Frame ${index + 1}`}
-                      className="pixelated h-full w-full object-contain"
+                      className="pixelated max-h-full max-w-full object-contain"
                     />
                     <span className="absolute top-1 left-1 rounded bg-canvas/80 px-1 py-0.5 font-mono text-[10px] font-semibold text-slate-300 ring-1 ring-white/10">
                       #{index + 1}
                     </span>
-                    {editing && (
-                      <span className="absolute top-1 right-1 rounded bg-cyan-400/90 px-1 py-0.5 text-[9px] font-bold text-slate-950">
+                    {isCurrent && (
+                      <span className="absolute bottom-1 left-1 rounded bg-cyan-400/90 px-1 py-0.5 text-[9px] font-bold text-slate-950">
+                        ATUAL
+                      </span>
+                    )}
+                    {isEditing && (
+                      <span className="absolute top-1 right-1 rounded bg-violet-400/90 px-1 py-0.5 text-[9px] font-bold text-slate-950">
                         EDITANDO
                       </span>
                     )}
@@ -237,15 +276,18 @@ export default function PreviewPanel({
                   <figcaption className="border-t border-white/5 p-1">
                     <button
                       type="button"
-                      onClick={() => onEditFrame(index)}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onEditFrame(index)
+                      }}
                       className={`inline-flex w-full items-center justify-center gap-1 rounded px-1.5 py-1 font-mono text-[10px] font-semibold transition ${
-                        editing
-                          ? 'bg-cyan-400/15 text-cyan-200'
+                        isEditing
+                          ? 'bg-violet-400/15 text-violet-200'
                           : 'text-slate-400 hover:bg-white/5 hover:text-cyan-200'
                       }`}
                     >
-                      <Pencil className="size-2.5" />
-                      [ Editar Frame ]
+                      <span className="size-2.5">✎</span>
+                      [ Editar ]
                     </button>
                   </figcaption>
                 </figure>
@@ -256,8 +298,8 @@ export default function PreviewPanel({
 
         {hasFrames && (
           <p className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-500">
-            <Pencil className="size-3" />
-            Editar um frame envia só aquele quadro para correção, preservando os demais.
+            <span className="size-3">✎</span>
+            Clique em qualquer frame para vê-lo lado a lado. Edite um frame para corrigi-lo individualmente.
           </p>
         )}
       </Card>

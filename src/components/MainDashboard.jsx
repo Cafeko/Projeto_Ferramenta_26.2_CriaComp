@@ -239,9 +239,9 @@ export default function MainDashboard() {
   const [generationError, setGenerationError] = useState('')
 
   /* ----------------------------- Player --------------------------------- */
+  const [currentFrameIndex, setCurrentFrameIndex] = useState(0)
+  const [viewMode, setViewMode] = useState('loop') // 'loop' | 'frame-by-frame'
   const [fps, setFps] = useState(8)
-  const [playing, setPlaying] = useState(true)
-  const [tick, setTick] = useState(0)
 
   /* --------------------------- Correção --------------------------------- */
   const [correctionPrompt, setCorrectionPrompt] = useState('')
@@ -282,11 +282,11 @@ export default function MainDashboard() {
 
   /* ------------------------- Preset inicial ------------------------------ */
   const selectPreset = useCallback(
-    (id) => {
+    async (id) => {
       const preset = PRESETS[id]
       if (!preset) return
       try {
-        const sheet = createPresetSheet(id)
+        const sheet = await createPresetSheet(id)
         setPresetId(id)
         setReference({
           dataUrl: sheet,
@@ -366,11 +366,15 @@ export default function MainDashboard() {
 
   /* --------------------------- Playback --------------------------------- */
   useEffect(() => {
-    if (!playing) return undefined
+    if (viewMode !== 'loop') return undefined
     const interval = Math.max(40, Math.round(1000 / Math.max(1, fps)))
-    const id = window.setInterval(() => setTick((value) => value + 1), interval)
+    const id = window.setInterval(() => {
+      const total = Math.max(referenceFrames.length, frames.length)
+      if (total === 0) return
+      setCurrentFrameIndex((value) => (value + 1) % total)
+    }, interval)
     return () => window.clearInterval(id)
-  }, [playing, fps])
+  }, [viewMode, fps, referenceFrames.length, frames.length])
 
   /* -------------------- Limpeza ao mudar inputs da coluna esquerda -------------------- */
   useEffect(() => {
@@ -380,8 +384,7 @@ export default function MainDashboard() {
     setFrames([])
     setCorrectionFrame(null)
     setCorrectionPrompt('')
-    setGenerationError('')
-    setTick(0)
+    setCurrentFrameIndex(0)
     setModalOpen(false)
   }, [provider, modelId, appearance, artStyle, reference, columns, rows, autoSlice])
 
@@ -531,7 +534,8 @@ export default function MainDashboard() {
     setFrames([])
     setCorrectionFrame(null)
     setCorrectionPrompt('')
-    setTick(0)
+    setCurrentFrameIndex(0)
+    setModalOpen(false)
 
     try {
       const result = await generateSprites({
@@ -600,6 +604,7 @@ export default function MainDashboard() {
 
   const handleEditFrame = useCallback((index) => {
     setCorrectionError('')
+    setCurrentFrameIndex(index)
     setModalOpen(true)
     setModalFrameIndex(index)
     setModalPrompt('')
@@ -961,15 +966,15 @@ export default function MainDashboard() {
             frames={frames}
             fps={fps}
             onFpsChange={setFps}
-            playing={playing}
-            onTogglePlay={() => setPlaying((value) => !value)}
-            tick={tick}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            currentFrameIndex={currentFrameIndex}
+            onCurrentFrameIndexChange={setCurrentFrameIndex}
             generating={generating}
             referenceBusy={referenceBusy}
-            elapsed={elapsed}
+            generationError={generationError}
             onEditFrame={handleEditFrame}
             editingFrame={modalOpen ? modalFrameIndex : null}
-            generationError={generationError}
           />
         </section>
 
