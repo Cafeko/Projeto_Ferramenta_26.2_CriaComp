@@ -26,6 +26,9 @@ import { Card, Field, PrimaryButton, inputClass } from './ui'
  *   onClearReference: () => void,
  *   appearance: string,
  *   onAppearanceChange: (value: string) => void,
+ *   appearanceReference: { dataUrl: string, name: string } | null,
+ *   onAppearanceFileSelected: (file: File) => void,
+ *   onClearAppearanceReference: () => void,
  *   artStyle: string,
  *   onArtStyleChange: (value: string) => void,
  *   styleReference: { dataUrl: string, name: string } | null,
@@ -44,6 +47,9 @@ export default function ReferencePanel({
   onClearReference,
   appearance,
   onAppearanceChange,
+  appearanceReference,
+  onAppearanceFileSelected,
+  onClearAppearanceReference,
   artStyle,
   onArtStyleChange,
   styleReference,
@@ -57,8 +63,10 @@ export default function ReferencePanel({
 }) {
   const inputRef = useRef(null)
   const styleInputRef = useRef(null)
+  const appearanceInputRef = useRef(null)
   const [dragging, setDragging] = useState(false)
   const [styleDragging, setStyleDragging] = useState(false)
+  const [appearanceDragging, setAppearanceDragging] = useState(false)
 
   function openPicker() {
     inputRef.current?.click()
@@ -76,6 +84,13 @@ export default function ReferencePanel({
     setStyleDragging(false)
     const file = event.dataTransfer?.files?.[0]
     if (file) onStyleFileSelected(file)
+  }
+
+  function handleAppearanceDrop(event) {
+    event.preventDefault()
+    setAppearanceDragging(false)
+    const file = event.dataTransfer?.files?.[0]
+    if (file) onAppearanceFileSelected(file)
   }
 
   return (
@@ -190,6 +205,95 @@ export default function ReferencePanel({
               placeholder="Ex.: cavaleira de armadura azul, cabelo curto branco, espada dourada, 32×32 px"
               className={`${inputClass} resize-y`}
             />
+
+            <input
+              ref={appearanceInputRef}
+              type="file"
+              accept="image/png,image/webp,image/gif,image/jpeg,image/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) onAppearanceFileSelected(file)
+                event.target.value = ''
+              }}
+            />
+
+            <div className="mt-2">
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => appearanceInputRef.current?.click()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    appearanceInputRef.current?.click()
+                  }
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault()
+                  setAppearanceDragging(true)
+                }}
+                onDragLeave={() => setAppearanceDragging(false)}
+                onDrop={handleAppearanceDrop}
+                className={`cursor-pointer rounded-lg border transition focus-visible:ring-2 focus-visible:ring-cyan-400/40 focus-visible:outline-none ${
+                  appearanceDragging
+                    ? 'border-cyan-400/70 bg-cyan-400/10'
+                    : 'border-dashed border-white/15 bg-black/15 hover:border-cyan-400/40 hover:bg-white/[0.03]'
+                }`}
+              >
+                {appearanceReference ? (
+                  <div className="flex items-center gap-2 p-1.5">
+                    <div className="bg-checkerboard grid h-10 w-12 shrink-0 place-items-center overflow-hidden rounded border border-white/10">
+                      <img
+                        src={appearanceReference.dataUrl}
+                        alt="Referência de aparência do personagem"
+                        className="pixelated max-h-10 max-w-12 object-contain"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[11px] font-medium text-slate-200">
+                        {appearanceReference.name}
+                      </p>
+                      <p
+                        className={`text-[10px] ${
+                          appearanceDragging ? 'text-cyan-300' : 'text-slate-500'
+                        }`}
+                      >
+                        {appearanceDragging
+                          ? 'Solte para substituir'
+                          : 'Aparência — clique ou arraste para trocar'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onClearAppearanceReference()
+                      }}
+                      className="rounded p-1 text-slate-400 transition hover:bg-white/5 hover:text-rose-300"
+                      aria-label="Remover referência de aparência"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    className={`flex w-full items-center justify-center gap-1.5 px-2 py-2 text-[11px] font-medium ${
+                      appearanceDragging ? 'text-cyan-200' : 'text-slate-400'
+                    }`}
+                  >
+                    <ImagePlus className="size-3.5" />
+                    {appearanceDragging
+                      ? 'Solte a imagem aqui'
+                      : 'Arraste uma imagem de referência ou clique (opcional)'}
+                  </div>
+                )}
+              </div>
+              <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+                Usada apenas para a aparência (roupa, cores, cabelo). Não afeta a
+                pose nem o estilo de arte.
+              </p>
+            </div>
           </Field>
 
           <Field

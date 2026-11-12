@@ -143,6 +143,9 @@ class GenerateRequest(_ProviderRequest):
     # Imagens de referência de ESTILO (opcionais): definem apenas a aparência
     # visual final (pixel density, paleta, contorno, nível de detalhe).
     style_images: list[str] = Field(default_factory=list, max_length=4)
+    # Imagens de referência de APARÊNCIA (opcionais): definem apenas a
+    # identidade do personagem (roupa, cores, cabelo, proporções, equipamento).
+    appearance_images: list[str] = Field(default_factory=list, max_length=4)
     character_appearance: str = Field(default="", max_length=6000)
     art_style: str = Field(default="", max_length=6000)
     previous_generated_images: list[str] = Field(
@@ -183,6 +186,7 @@ class GenerateRequest(_ProviderRequest):
         return (
             sum(len(item) for item in self.reference_images)
             + sum(len(item) for item in self.style_images)
+            + sum(len(item) for item in self.appearance_images)
             + sum(len(item) for item in self.previous_generated_images)
         )
 
@@ -225,7 +229,7 @@ class ImagePayload:
 @dataclass(frozen=True)
 class VisualInput:
     label: str
-    role: Literal["pose", "style", "previous"]
+    role: Literal["pose", "appearance", "style", "previous"]
     image: ImagePayload
 
 
@@ -705,7 +709,34 @@ def _order_text(visuals: Iterable[VisualInput]) -> str:
 
 
 def _generation_body(request: GenerateRequest, frame_count: int) -> str:
-    character = request.character_appearance or "A generic 2D game character."
+    has_appearance_image = bool(request.appearance_images)
+    has_appearance_text = bool(request.character_appearance.strip())
+    if has_appearance_text:
+        character = request.character_appearance
+    elif has_appearance_image:
+        character = (
+            "Use the APPEARANCE REFERENCE image for the character identity: "
+            "clothing, colors, hair, equipment, proportions and defining traits."
+        )
+    else:
+        character = "A generic 2D game character."
+
+    if has_appearance_image:
+        appearance_source_rule = (
+            "- An APPEARANCE REFERENCE image is provided. Use it ONLY for the "
+            "character's identity: clothing, colors, hair, equipment, proportions "
+            "and defining traits. Render it in the ART STYLE. Do NOT copy its "
+            "pose, position, frame layout, background, pixel density, outlines, "
+            "shading or rendering style.\n"
+        )
+    elif has_appearance_text:
+        appearance_source_rule = (
+            "- The CHARACTER DESCRIPTION defines the character's identity; render "
+            "it in the ART STYLE and simplify details to fit the resolution.\n"
+        )
+    else:
+        appearance_source_rule = ""
+
     has_style_image = bool(request.style_images)
     has_style_text = bool(request.art_style.strip())
 
@@ -804,7 +835,8 @@ def _generation_body(request: GenerateRequest, frame_count: int) -> str:
     return f"""You are generating a 2D game sprite sheet.
 
 TASK: Transfer ONLY the poses from the POSE REFERENCE onto the CHARACTER
-described below, rendered in the ART STYLE. The result must look like a native
+defined below (by the CHARACTER APPEARANCE section and/or the APPEARANCE
+REFERENCE), rendered in the ART STYLE. The result must look like a native
 low-resolution game sprite sheet created directly within the target pixel
 limitations of the art style.
 
@@ -813,16 +845,20 @@ INPUT ROLES (strict):
    orientation and camera angle ONLY. It is a technical template. NEVER copy
    its character identity, clothing, colors, palette, shading, texture or
    rendering style.
-2) ART STYLE REFERENCE (when present) = rendering style ONLY: pixel density,
+2) APPEARANCE REFERENCE (when present) = character identity ONLY: clothing,
+   colors, hair, equipment, proportions and defining traits. NEVER copy its
+   pose, position, frame layout, background, pixel density, outlines, shading
+   or rendering style.
+3) ART STYLE REFERENCE (when present) = rendering style ONLY: pixel density,
    level of abstraction, palette discipline, outline style, shading, texture
    and amount of detail. NEVER copy its character identity, pose, frame layout
    or background.
-3) CHARACTER DESCRIPTION = who the character is (clothing, colors, proportions,
+4) CHARACTER DESCRIPTION = who the character is (clothing, colors, proportions,
    hair, equipment, defining traits).
-4) ART STYLE DESCRIPTION = the rendering style.
-{style_source_rule}- {layout_rule}
+5) ART STYLE DESCRIPTION = the rendering style.
+{appearance_source_rule}{style_source_rule}- {layout_rule}
 
-CHARACTER DESCRIPTION:
+CHARACTER APPEARANCE:
 {character}
 
 ART STYLE (MANDATORY - overrides conflicting details):
@@ -951,6 +987,19 @@ def _correction_body(
         if pose_count
         else ""
     )
+    if request.appearance_images:
+        appearance_rule = (
+            "- The APPEARANCE REFERENCE image defines the character's identity "
+            "(clothing, colors, hair, equipment, proportions). Do not copy its "
+            "pose, position, frame layout or rendering style.\n"
+        )
+    elif request.character_appearance.strip():
+        appearance_rule = (
+            "- The CHARACTER DESCRIPTION defines the character's identity; keep "
+            "it consistent with the previous generated frame.\n"
+        )
+    else:
+        appearance_rule = ""
     if request.style_images:
         style_rule = (
             "- The ART STYLE REFERENCE image defines the rendering style "
@@ -984,7 +1033,7 @@ CORRECTION REQUESTED BY THE USER (may be written in Portuguese; follow it exactl
 
 RULES:
 - The PREVIOUS GENERATED image(s) are the source of truth for character identity, palette, proportions, outline thickness, pixel density, canvas size and background.
-{pose_rule}{style_rule}{sheet_rule}- Change ONLY what the correction explicitly requests. Preserve everything else as close to pixel-for-pixel as possible.
+{pose_rule}{appearance_rule}{style_rule}{sheet_rule}- Change ONLY what the correction explicitly requests. Preserve everything else as close to pixel-for-pixel as possible.
 - Do not redesign, re-pose, re-frame, re-color or add elements that were not requested.
 - Keep the sprite isolated on the same flat, uniform background. Do not add scenery, shadows, text, watermarks or extra panels.
 - Pixel art only: hard edges, no anti-aliasing, no blur and no noise.
@@ -1008,6 +1057,10 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
     style_images = [
         _normalize_input_image(value, "style_images", index)
         for index, value in enumerate(request.style_images)
+    ]
+    appearance_images = [
+        _normalize_input_image(value, "appearance_images", index)
+        for index, value in enumerate(request.appearance_images)
     ]
     previous_images = [
         _normalize_input_image(value, "previous_generated_images", index)
@@ -1090,6 +1143,19 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
                 )
             visuals.append(VisualInput(label=label, role="pose", image=image))
 
+        for index, image in enumerate(appearance_images):
+            if len(appearance_images) == 1:
+                label = (
+                    "APPEARANCE REFERENCE (character identity only; do not copy "
+                    "its pose, position or rendering style)"
+                )
+            else:
+                label = (
+                    f"APPEARANCE REFERENCE {index + 1} of "
+                    f"{len(appearance_images)}"
+                )
+            visuals.append(VisualInput(label=label, role="appearance", image=image))
+
         for index, image in enumerate(style_images):
             if len(style_images) == 1:
                 label = (
@@ -1138,6 +1204,18 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
         else:
             label = f"POSE REFERENCE frame {index + 1} of {len(pose_images)}"
         visuals.append(VisualInput(label=label, role="pose", image=image))
+
+    for index, image in enumerate(appearance_images):
+        if len(appearance_images) == 1:
+            label = (
+                "APPEARANCE REFERENCE (character identity only; do not copy its "
+                "pose, position or rendering style)"
+            )
+        else:
+            label = (
+                f"APPEARANCE REFERENCE {index + 1} of {len(appearance_images)}"
+            )
+        visuals.append(VisualInput(label=label, role="appearance", image=image))
 
     for index, image in enumerate(style_images):
         if len(style_images) == 1:

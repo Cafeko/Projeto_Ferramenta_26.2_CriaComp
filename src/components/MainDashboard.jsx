@@ -197,6 +197,8 @@ export default function MainDashboard() {
   const [referenceError, setReferenceError] = useState('')
   // Imagem opcional que define APENAS o estilo de arte do resultado.
   const [styleReference, setStyleReference] = useState(null)
+  // Imagem opcional que define APENAS a aparência/identidade do personagem.
+  const [appearanceReference, setAppearanceReference] = useState(null)
 
   /* ----------------------------- Prompts -------------------------------- */
   const [appearance, setAppearance] = useState('')
@@ -382,7 +384,15 @@ export default function MainDashboard() {
     setModalOpen(false)
     setModalCandidateFrame(null)
     setModalPreviewFrame(null)
-  }, [provider, modelId, appearance, artStyle, reference, styleReference])
+  }, [
+    provider,
+    modelId,
+    appearance,
+    artStyle,
+    reference,
+    styleReference,
+    appearanceReference,
+  ])
 
   /* ------------------------ Cronômetro ---------------------------------- */
   useEffect(() => {
@@ -536,11 +546,33 @@ export default function MainDashboard() {
     setStyleReference(null)
   }, [])
 
+  const handleAppearanceFileSelected = useCallback(
+    async (file) => {
+      try {
+        const image = await readImageFile(file)
+        setAppearanceReference({
+          dataUrl: image.dataUrl,
+          width: image.width,
+          height: image.height,
+          name: file.name,
+        })
+        pushToast('Imagem de referência de aparência carregada.', 'success')
+      } catch (error) {
+        pushToast(describeApiError(error), 'error')
+      }
+    },
+    [pushToast],
+  )
+
+  const handleClearAppearanceReference = useCallback(() => {
+    setAppearanceReference(null)
+  }, [])
+
   const canGenerate = Boolean(
     apiKey.trim() &&
       modelId &&
       referenceFrames.length > 0 &&
-      appearance.trim() &&
+      (appearance.trim() || appearanceReference) &&
       !generating,
   )
 
@@ -548,7 +580,9 @@ export default function MainDashboard() {
     if (!apiKey.trim()) return 'Informe e valide sua chave de API para começar.'
     if (!modelId) return 'Valide a chave e escolha um modelo de imagem.'
     if (referenceFrames.length === 0) return 'Envie uma referência de movimento.'
-    if (!appearance.trim()) return 'Descreva a aparência do personagem.'
+    if (!appearance.trim() && !appearanceReference) {
+      return 'Descreva a aparência do personagem ou envie uma imagem de referência.'
+    }
     const hasStyle = Boolean(artStyle.trim() || styleReference)
     return hasStyle
       ? `Pronto para gerar ${referenceGrid.total ?? referenceGrid.columns * referenceGrid.rows} frame(s) — grade ${referenceGrid.columns}×${referenceGrid.rows}.`
@@ -559,6 +593,7 @@ export default function MainDashboard() {
     referenceFrames,
     referenceGrid,
     appearance,
+    appearanceReference,
     artStyle,
     styleReference,
   ])
@@ -576,6 +611,9 @@ export default function MainDashboard() {
       // apenas no frontend para exibição nos frames lado a lado e filmstrip.
       const referenceImage = reference?.dataUrl ? [reference.dataUrl] : []
       const styleImages = styleReference?.dataUrl ? [styleReference.dataUrl] : []
+      const appearanceImages = appearanceReference?.dataUrl
+        ? [appearanceReference.dataUrl]
+        : []
 
       // Quantidade de frames que a IA deve desenhar: vem da grade REAL da
       // referência (detectada nos pixels), nunca dos campos de exibição.
@@ -594,7 +632,11 @@ export default function MainDashboard() {
       }
 
       try {
-        ensurePayloadSize([...referenceImage, ...styleImages])
+        ensurePayloadSize([
+          ...referenceImage,
+          ...styleImages,
+          ...appearanceImages,
+        ])
       } catch (error) {
         pushToast(describeApiError(error), 'error')
         return
@@ -622,6 +664,7 @@ export default function MainDashboard() {
           referenceImages: referenceImage,
           characterAppearance: appearance.trim(),
           artStyle: artStyle.trim(),
+          appearanceImages,
           styleImages,
           frameCount: requestedFrameCount,
           gridColumns: requestedGrid.columns,
@@ -706,6 +749,7 @@ export default function MainDashboard() {
     reference,
     referenceGrid,
     styleReference,
+    appearanceReference,
   ])
 
   const handleEditFrame = useCallback((index) => {
@@ -781,9 +825,17 @@ export default function MainDashboard() {
         ? [reference.dataUrl]
         : []
     const styleImages = styleReference?.dataUrl ? [styleReference.dataUrl] : []
+    const appearanceImages = appearanceReference?.dataUrl
+      ? [appearanceReference.dataUrl]
+      : []
 
     try {
-      ensurePayloadSize([...previousImages, ...referenceImages, ...styleImages])
+      ensurePayloadSize([
+        ...previousImages,
+        ...referenceImages,
+        ...styleImages,
+        ...appearanceImages,
+      ])
     } catch (error) {
       pushToast(describeApiError(error), 'error')
       return
@@ -800,6 +852,7 @@ export default function MainDashboard() {
         referenceImages,
         characterAppearance: appearance.trim(),
         artStyle: artStyle.trim(),
+        appearanceImages,
         styleImages,
         previousImages,
         correctionPrompt: correctionPrompt.trim(),
@@ -884,6 +937,7 @@ export default function MainDashboard() {
     reference,
     referenceFrames,
     styleReference,
+    appearanceReference,
   ])
 
   /* --------------------------- Modal: correção individual -------------------------- */
@@ -912,9 +966,17 @@ export default function MainDashboard() {
       ? [referenceFrames[index]]
       : []
     const styleImages = styleReference?.dataUrl ? [styleReference.dataUrl] : []
+    const appearanceImages = appearanceReference?.dataUrl
+      ? [appearanceReference.dataUrl]
+      : []
 
     try {
-      ensurePayloadSize([...previousImages, ...referenceImages, ...styleImages])
+      ensurePayloadSize([
+        ...previousImages,
+        ...referenceImages,
+        ...styleImages,
+        ...appearanceImages,
+      ])
     } catch (error) {
       pushToast(describeApiError(error), 'error')
       return
@@ -931,6 +993,7 @@ export default function MainDashboard() {
         referenceImages,
         characterAppearance: appearance.trim(),
         artStyle: artStyle.trim(),
+        appearanceImages,
         styleImages,
         previousImages,
         correctionPrompt: modalPrompt.trim(),
@@ -980,6 +1043,7 @@ export default function MainDashboard() {
     recompileGeneratedSheet,
     referenceFrames,
     styleReference,
+    appearanceReference,
   ])
 
   /* --------------------- Modal: escolha do frame final --------------------- */
@@ -1039,9 +1103,17 @@ export default function MainDashboard() {
       ? [reference.dataUrl]
       : []
     const styleImages = styleReference?.dataUrl ? [styleReference.dataUrl] : []
+    const appearanceImages = appearanceReference?.dataUrl
+      ? [appearanceReference.dataUrl]
+      : []
 
     try {
-      ensurePayloadSize([...previousImages, ...referenceImages, ...styleImages])
+      ensurePayloadSize([
+        ...previousImages,
+        ...referenceImages,
+        ...styleImages,
+        ...appearanceImages,
+      ])
     } catch (error) {
       pushToast(describeApiError(error), 'error')
       return
@@ -1058,6 +1130,7 @@ export default function MainDashboard() {
         referenceImages,
         characterAppearance: appearance.trim(),
         artStyle: artStyle.trim(),
+        appearanceImages,
         styleImages,
         previousImages,
         correctionPrompt: modalPrompt.trim(),
@@ -1134,6 +1207,7 @@ export default function MainDashboard() {
     reference,
     referenceFrames,
     styleReference,
+    appearanceReference,
   ])
 
   const handleExportGrid = useCallback(async () => {
@@ -1197,6 +1271,9 @@ export default function MainDashboard() {
             onClearReference={handleClearReference}
             appearance={appearance}
             onAppearanceChange={setAppearance}
+            appearanceReference={appearanceReference}
+            onAppearanceFileSelected={handleAppearanceFileSelected}
+            onClearAppearanceReference={handleClearAppearanceReference}
             artStyle={artStyle}
             onArtStyleChange={setArtStyle}
             styleReference={styleReference}
