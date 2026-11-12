@@ -139,15 +139,15 @@ export default function ReferencePanel({
                     }`}
                     aria-pressed={active}
                   >
-                    <span className="bg-checkerboard flex h-10 items-center justify-center overflow-hidden rounded">
+                    <span className="bg-checkerboard flex items-center justify-center overflow-hidden rounded h-12 min-w-[72px]">
                       {thumbs[option.id] ? (
                         <img
                           src={thumbs[option.id]}
                           alt=""
-                          className="pixelated h-8 w-full object-contain"
+                          className="pixelated h-full w-auto object-contain"
                         />
                       ) : (
-                        <Film className="size-4 text-slate-600" />
+                        <Film className="size-5 text-slate-600" />
                       )}
                     </span>
                     <span
