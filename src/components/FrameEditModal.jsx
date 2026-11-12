@@ -56,22 +56,23 @@ export default function FrameEditModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-50 overflow-y-auto"
       role="dialog"
       aria-modal="true"
       aria-label="Edição de frame isolado"
     >
       {/* Backdrop com fechamento ao clicar fora */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
         onClick={onClose}
       />
 
       {/* Conteúdo do modal */}
-      <div
-        className="relative w-full max-w-4xl bg-surface border border-white/10 rounded-2xl shadow-2xl shadow-black/60 p-6 animate-in fade-in zoom-in duration-200"
-      >
-        <header className="flex items-center justify-between gap-4 mb-5">
+      <div className="relative flex min-h-full items-center justify-center p-3 sm:p-6">
+        <div
+          className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl overflow-y-auto rounded-2xl border border-white/10 bg-surface p-4 shadow-2xl shadow-black/60 animate-in fade-in zoom-in duration-200 sm:p-6"
+        >
+        <header className="flex items-center justify-between gap-4 mb-4">
           <h2 className="text-lg font-semibold text-white">
             Editar Frame <span className="text-cyan-400 font-mono">#{frameIndex + 1}</span>
           </h2>
@@ -99,7 +100,7 @@ export default function FrameEditModal({
                 <Scan className="size-3.5 text-slate-500" />
                 Pose Original
               </p>
-              <div className="bg-checkerboard aspect-square rounded-lg border border-white/10 overflow-hidden relative group">
+              <div className="bg-checkerboard h-36 sm:h-44 rounded-lg border border-white/10 overflow-hidden relative group">
                 {originalFrame ? (
                   <img
                     src={originalFrame}
@@ -124,7 +125,7 @@ export default function FrameEditModal({
                 <AlertTriangle className="size-3.5" />
                 Frame Atual
               </p>
-              <div className="bg-checkerboard aspect-square rounded-lg border border-white/10 overflow-hidden relative group">
+              <div className="bg-checkerboard h-36 sm:h-44 rounded-lg border border-white/10 overflow-hidden relative group">
                 <img
                   src={currentFrame}
                   alt="Frame gerado atual"
@@ -142,7 +143,7 @@ export default function FrameEditModal({
                 <RefreshCw className="size-3.5" />
                 Preview da Correção
               </p>
-              <div className="bg-checkerboard aspect-square rounded-lg border border-white/10 overflow-hidden relative flex flex-col items-center justify-center">
+              <div className="bg-checkerboard h-36 sm:h-44 rounded-lg border border-white/10 overflow-hidden relative flex flex-col items-center justify-center">
                 {hasPreview && previewFrame ? (
                   <img
                     src={previewFrame}
@@ -229,9 +230,10 @@ export default function FrameEditModal({
 
         <p className="mt-4 flex items-center gap-1.5 text-[10px] text-slate-500">
           <CheckCircle2 className="size-3" />
-          O frame corrigido substitui o PNG correspondente na lista de frames
-          e pode ser exportado normalmente.
+          O frame corrigido substitui o PNG correspondente e a spritesheet é
+          remontada automaticamente para exportação ou novas correções.
         </p>
+        </div>
       </div>
     </div>
   )

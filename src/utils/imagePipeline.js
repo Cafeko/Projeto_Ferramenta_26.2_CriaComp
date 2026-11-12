@@ -702,6 +702,59 @@ export async function alignBoundingBox(base64Frame, options = {}) {
 }
 
 /**
+ * Redimensiona uma imagem para um tamanho exato (pixel art, sem suavização).
+ *
+ * @param {ImageSource} source
+ * @param {number} width
+ * @param {number} height
+ * @returns {Promise<string>} Data URL PNG.
+ */
+export async function resizeFrameToSize(source, width, height) {
+  const targetWidth = assertPositiveInt(width, 'width')
+  const targetHeight = assertPositiveInt(height, 'height')
+  const frame = await loadDrawable(source, 'o frame')
+
+  try {
+    const canvas = createCanvas(targetWidth, targetHeight)
+    const context = getContext(canvas)
+    context.imageSmoothingEnabled = false
+    context.clearRect(0, 0, targetWidth, targetHeight)
+    context.drawImage(
+      frame.drawable,
+      0,
+      0,
+      frame.width,
+      frame.height,
+      0,
+      0,
+      targetWidth,
+      targetHeight,
+    )
+    return canvasToDataUrl(canvas, 'o frame redimensionado')
+  } finally {
+    frame.dispose()
+  }
+}
+
+/**
+ * Redimensiona um frame corrigido para o mesmo tamanho de um frame existente.
+ * Evita que uma resposta quadrada da IA "exploda" o tamanho da spritesheet.
+ *
+ * @param {ImageSource} source Frame corrigido devolvido pela IA.
+ * @param {ImageSource} referenceSource Frame atual, que define largura/altura.
+ * @returns {Promise<string>} Data URL PNG.
+ */
+export async function resizeFrameToMatch(source, referenceSource) {
+  const reference = await loadDrawable(referenceSource, 'o frame de referência')
+
+  try {
+    return await resizeFrameToSize(source, reference.width, reference.height)
+  } finally {
+    reference.dispose()
+  }
+}
+
+/**
  * Compila uma lista de frames em uma única spritesheet em grade.
  *
  * Todos os frames são desenhados em células do mesmo tamanho (o maior frame

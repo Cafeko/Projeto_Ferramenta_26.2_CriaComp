@@ -843,6 +843,9 @@ def _correction_body(
     target_frame_index: int | None,
     previous_count: int,
     pose_count: int,
+    frame_count: int,
+    grid_columns: int,
+    grid_rows: int,
 ) -> str:
     correction = request.correction_prompt or ""
     if target_frame_index is not None:
@@ -855,15 +858,34 @@ def _correction_body(
             "sheet, no border and no extra panels."
         )
     else:
-        scope = (
-            "Apply the correction consistently to every provided frame. "
-            "Preserve each frame's pose and timing."
-        )
-        if previous_count > 1:
+        if frame_count > 1:
+            scope = (
+                f"Apply the correction consistently to every frame inside the "
+                f"provided sprite sheet ({frame_count} frames). Preserve each "
+                "frame's pose, grid position and timing."
+            )
+        else:
+            scope = (
+                "Apply the correction consistently to the provided sprite. "
+                "Preserve its pose and timing."
+            )
+        if frame_count > 1:
+            layout = (
+                "side by side in a single row"
+                if grid_rows == 1
+                else f"arranged in a {grid_columns} columns × {grid_rows} rows grid"
+            )
             output_rule = (
-                f"OUTPUT FORMAT: one single horizontal sprite sheet containing "
-                f"exactly {previous_count} frames, in the same left-to-right order, "
-                "evenly spaced with no gaps, no borders and no labels."
+                f"OUTPUT FORMAT - CRITICAL:\n"
+                f"- Return ONE single sprite sheet containing EXACTLY {frame_count} "
+                f"frames, {layout}, in the same reading order and at the same grid "
+                "positions as the PREVIOUS GENERATED sheet.\n"
+                "- The PREVIOUS GENERATED input may be a single sprite sheet with "
+                "multiple frames. Treat every cell as one separate frame.\n"
+                "- Apply the correction to EVERY cell, preserving each frame's "
+                "pose, position, timing and canvas size.\n"
+                "- Do not crop, merge, reorder, add or remove frames. Do not return "
+                f"a single frame when {frame_count} frames are expected."
             )
         else:
             output_rule = (
@@ -878,6 +900,14 @@ def _correction_body(
         else ""
     )
 
+    sheet_rule = (
+        f"- The PREVIOUS GENERATED input is a sprite sheet with {frame_count} "
+        "frames. Keep the same number of frames and the same grid positions, and "
+        "verify that no frame is missing.\n"
+        if target_frame_index is None and frame_count > 1
+        else ""
+    )
+
     return f"""You are correcting a sprite frame for a 2D game animation.
 
 MODE: {scope}
@@ -889,7 +919,7 @@ CORRECTION REQUESTED BY THE USER (may be written in Portuguese; follow it exactl
 
 RULES:
 - The PREVIOUS GENERATED image(s) are the source of truth for character identity, palette, proportions, outline thickness, pixel density, canvas size and background.
-{pose_rule}- Change ONLY what the correction explicitly requests. Preserve everything else as close to pixel-for-pixel as possible.
+{pose_rule}{sheet_rule}- Change ONLY what the correction explicitly requests. Preserve everything else as close to pixel-for-pixel as possible.
 - Do not redesign, re-pose, re-frame, re-color or add elements that were not requested.
 - Keep the sprite isolated on the same flat, uniform background. Do not add scenery, shadows, text, watermarks or extra panels.
 - Pixel art only: hard edges, no anti-aliasing, no blur and no noise.
@@ -947,14 +977,28 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
             pose_selected = (
                 [pose_images[target]] if target < len(pose_images) else []
             )
+            corrected_frames = 1
+            grid_columns = 1
+            grid_rows = 1
         else:
             previous_selected = previous_images
             # Alinha as referências de pose com os frames que serão corrigidos.
             pose_selected = pose_images[: len(previous_images)]
+            corrected_frames = request.frame_count or len(previous_images) or 1
+            grid_columns = request.grid_columns or corrected_frames
+            grid_rows = request.grid_rows or 1
+            if grid_columns * grid_rows != corrected_frames:
+                grid_columns = corrected_frames
+                grid_rows = 1
 
         for index, image in enumerate(previous_selected):
             if target is not None:
                 label = f"PREVIOUS GENERATED sprite to correct (frame {target + 1})"
+            elif len(previous_selected) == 1 and corrected_frames > 1:
+                label = (
+                    f"PREVIOUS GENERATED sprite SHEET with {corrected_frames} "
+                    "frames (correct every cell in place and preserve the grid)"
+                )
             else:
                 label = (
                     f"PREVIOUS GENERATED sprite frame {index + 1} "
@@ -965,6 +1009,11 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
         for index, image in enumerate(pose_selected):
             if target is not None:
                 label = f"POSE REFERENCE for frame {target + 1}"
+            elif len(pose_selected) == 1:
+                label = (
+                    "POSE REFERENCE sprite sheet (source of poses only; do not "
+                    "copy its character design or art style)"
+                )
             else:
                 label = (
                     f"POSE REFERENCE frame {index + 1} "
@@ -984,6 +1033,9 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
             target_frame_index=target,
             previous_count=len(previous_selected),
             pose_count=len(pose_selected),
+            frame_count=corrected_frames,
+            grid_columns=grid_columns,
+            grid_rows=grid_rows,
         )
         return PromptPlan(
             mode="correction",
@@ -991,6 +1043,9 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
             body=body,
             visuals=tuple(visuals),
             target_frame_index=target,
+            frame_count_override=corrected_frames,
+            grid_columns=grid_columns,
+            grid_rows=grid_rows,
         )
 
     for index, image in enumerate(pose_images):

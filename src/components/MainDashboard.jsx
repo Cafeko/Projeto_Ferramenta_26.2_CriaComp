@@ -17,7 +17,6 @@ import {
   DEFAULT_ART_STYLE,
   DEFAULT_PROVIDER,
   MAX_PREVIOUS_FRAMES,
-  MAX_REFERENCE_FRAMES,
   MAX_TOTAL_BASE64_CHARS,
   countBase64Chars,
   describeApiError,
@@ -29,6 +28,7 @@ import {
   detectSpriteGrid,
   downloadDataUrl,
   exportGIF,
+  resizeFrameToMatch,
   sliceSpritesheet,
 } from '../utils/imagePipeline'
 
@@ -675,6 +675,32 @@ export default function MainDashboard() {
     setModalPreviewFrame(null)
   }, [])
 
+  /**
+   * Junta novamente todos os frames em UMA spritesheet. É usada depois de uma
+   * correção individual para que o resultado atualizado possa ser exportado ou
+   * enviado inteiro nas correções em lote.
+   */
+  const recompileGeneratedSheet = useCallback(
+    async (nextFrames) => {
+      if (!Array.isArray(nextFrames) || nextFrames.length === 0) return
+      const cols = Math.max(
+        1,
+        Math.min(nextFrames.length, Number.parseInt(columns, 10) || 1),
+      )
+      try {
+        const sheet = await compileSpritesheetGrid(nextFrames, cols)
+        setGeneratedSheets([sheet])
+        setColumns(String(cols))
+        setRows(String(Math.ceil(nextFrames.length / cols)))
+        setAutoSlice(nextFrames.length > 1)
+        setExportColumns(String(Math.min(4, nextFrames.length)))
+      } catch (error) {
+        console.error('[recompile-sheet]', error)
+      }
+    },
+    [columns],
+  )
+
   const handleApplyCorrection = useCallback(async () => {
     if (correcting || frames.length === 0) return
     if (!correctionPrompt.trim()) {
@@ -686,25 +712,34 @@ export default function MainDashboard() {
       return
     }
 
-    const previousImages = frames.slice(0, MAX_PREVIOUS_FRAMES)
-    const targetFrameIndex =
-      correctionFrame !== null && correctionFrame < previousImages.length
-        ? correctionFrame
-        : null
+    const individual =
+      correctionFrame !== null &&
+      correctionFrame >= 0 &&
+      correctionFrame < frames.length
 
-    if (correctionFrame !== null && targetFrameIndex === null) {
-      pushToast(
-        `A correção individual aceita até ${MAX_PREVIOUS_FRAMES} frames. Use a correção em lote.`,
-        'error',
-      )
-      return
-    }
+    const gridColumns = Math.max(1, Number.parseInt(columns, 10) || 1)
+    const gridRows = Math.max(
+      1,
+      individual ? 1 : Math.ceil(frames.length / gridColumns),
+    )
+
+    // Individual: envia SÓ o frame escolhido e pede 1 frame de volta.
+    // Em lote: envia a spritesheet INTEIRA e pede a folha corrigida inteira.
+    const previousImages = individual
+      ? [frames[correctionFrame]]
+      : generatedSheets.length === 1
+        ? [generatedSheets[0]]
+        : frames.slice(0, MAX_PREVIOUS_FRAMES)
+    const referenceImages = individual
+      ? referenceFrames[correctionFrame]
+        ? [referenceFrames[correctionFrame]]
+        : []
+      : reference?.dataUrl
+        ? [reference.dataUrl]
+        : []
 
     try {
-      ensurePayloadSize([
-        ...previousImages,
-        ...referenceFrames.slice(0, MAX_REFERENCE_FRAMES),
-      ])
+      ensurePayloadSize([...previousImages, ...referenceImages])
     } catch (error) {
       pushToast(describeApiError(error), 'error')
       return
@@ -718,32 +753,59 @@ export default function MainDashboard() {
         provider,
         apiKey: apiKey.trim(),
         modelId,
-        referenceImages: referenceFrames.slice(0, MAX_REFERENCE_FRAMES),
+        referenceImages,
         characterAppearance: appearance.trim(),
         artStyle: artStyle.trim(),
         previousImages,
         correctionPrompt: correctionPrompt.trim(),
-        targetFrameIndex,
+        targetFrameIndex: individual ? 0 : null,
+        frameCount: individual ? 1 : frames.length,
+        gridColumns: individual ? 1 : gridColumns,
+        gridRows: individual ? 1 : gridRows,
       })
 
       if (result.images.length === 0) {
         throw new Error('A IA não retornou nenhuma imagem corrigida. Tente novamente.')
       }
 
-      if (result.targetFrameIndex !== null) {
-        const index = result.targetFrameIndex
-        setFrames((current) =>
-          current.map((frame, position) =>
-            position === index ? result.images[0] : frame,
-          ),
+      if (individual) {
+        const index = correctionFrame
+        // A resposta pode vir em outra resolução: normaliza para o tamanho do
+        // frame original antes de recolocar na sequência.
+        const corrected = await resizeFrameToMatch(
+          result.images[0],
+          frames[index],
         )
-        pushToast(`Frame #${index + 1} corrigido sem alterar os demais.`, 'success')
+        const nextFrames = frames.map((frame, position) =>
+          position === index ? corrected : frame,
+        )
+        setFrames(nextFrames)
+        await recompileGeneratedSheet(nextFrames)
+        pushToast(
+          `Frame #${index + 1} corrigido sem alterar os demais.`,
+          'success',
+        )
+      } else if (result.images.length === 1) {
+        // Correção em lote: a IA devolveu a spritesheet inteira corrigida.
+        // Detecta a grade real da resposta (pode ter mudado) para recortar.
+        let resultGrid = { columns: gridColumns, rows: gridRows }
+        try {
+          const detected = await detectSpriteGrid(result.images[0])
+          if (detected.total === frames.length) resultGrid = detected
+        } catch (detectError) {
+          console.warn('[correction-grid]', detectError)
+        }
+        setGeneratedSheets(result.images)
+        setColumns(String(resultGrid.columns))
+        setRows(String(resultGrid.rows))
+        setAutoSlice(frames.length > 1)
+        pushToast(
+          `${frames.length} frame${frames.length === 1 ? '' : 's'} corrigido${frames.length === 1 ? '' : 's'} em lote.`,
+          'success',
+        )
       } else {
-        setFrames((current) => {
-          if (result.images.length === current.length) return result.images
-          // Resposta parcial: mantém os frames que a IA não devolveu.
-          return current.map((frame, position) => result.images[position] ?? frame)
-        })
+        setGeneratedSheets(result.images)
+        setFrames(result.images)
         pushToast(
           `${result.images.length} frame${result.images.length === 1 ? '' : 's'} corrigido${result.images.length === 1 ? '' : 's'} em lote.`,
           'success',
@@ -764,13 +826,17 @@ export default function MainDashboard() {
     apiKey,
     appearance,
     artStyle,
+    columns,
     correcting,
     correctionFrame,
     correctionPrompt,
     frames,
+    generatedSheets,
     modelId,
     provider,
     pushToast,
+    recompileGeneratedSheet,
+    reference,
     referenceFrames,
   ])
 
@@ -793,8 +859,12 @@ export default function MainDashboard() {
     }
 
     const index = modalFrameIndex
+    // Envia APENAS o frame selecionado. O índice do alvo é 0 porque só há uma
+    // imagem em `previous_generated_images` (o frame local pode ser, p.ex., 7).
     const previousImages = [frames[index]]
-    const referenceImages = referenceFrames.slice(0, MAX_REFERENCE_FRAMES)
+    const referenceImages = referenceFrames[index]
+      ? [referenceFrames[index]]
+      : []
 
     try {
       ensurePayloadSize([...previousImages, ...referenceImages])
@@ -816,7 +886,10 @@ export default function MainDashboard() {
         artStyle: artStyle.trim(),
         previousImages,
         correctionPrompt: modalPrompt.trim(),
-        targetFrameIndex: index,
+        targetFrameIndex: 0,
+        frameCount: 1,
+        gridColumns: 1,
+        gridRows: 1,
       })
 
       if (result.images.length === 0) {
@@ -825,12 +898,14 @@ export default function MainDashboard() {
         )
       }
 
-      setFrames((current) =>
-        current.map((frame, position) =>
-          position === index ? result.images[0] : frame,
-        ),
+      // Normaliza a resolução da resposta para o tamanho do frame original.
+      const corrected = await resizeFrameToMatch(result.images[0], frames[index])
+      const nextFrames = frames.map((frame, position) =>
+        position === index ? corrected : frame,
       )
-      setModalPreviewFrame(result.images[0])
+      setFrames(nextFrames)
+      await recompileGeneratedSheet(nextFrames)
+      setModalPreviewFrame(corrected)
       setModalPrompt('')
       pushToast(
         `Frame #${index + 1} corrigido sem alterar os demais.`,
@@ -856,6 +931,7 @@ export default function MainDashboard() {
     modelId,
     provider,
     pushToast,
+    recompileGeneratedSheet,
     referenceFrames,
   ])
 
@@ -876,8 +952,17 @@ export default function MainDashboard() {
       return
     }
 
-    const previousImages = frames.slice(0, MAX_PREVIOUS_FRAMES)
-    const referenceImages = referenceFrames.slice(0, MAX_REFERENCE_FRAMES)
+    const gridColumns = Math.max(1, Number.parseInt(columns, 10) || 1)
+    const gridRows = Math.max(1, Math.ceil(frames.length / gridColumns))
+
+    // Em lote, envia a spritesheet inteira e pede a folha inteira corrigida.
+    const previousImages =
+      generatedSheets.length === 1
+        ? [generatedSheets[0]]
+        : frames.slice(0, MAX_PREVIOUS_FRAMES)
+    const referenceImages = reference?.dataUrl
+      ? [reference.dataUrl]
+      : []
 
     try {
       ensurePayloadSize([...previousImages, ...referenceImages])
@@ -900,6 +985,9 @@ export default function MainDashboard() {
         previousImages,
         correctionPrompt: modalPrompt.trim(),
         targetFrameIndex: null,
+        frameCount: frames.length,
+        gridColumns,
+        gridRows,
       })
 
       if (result.images.length === 0) {
@@ -908,15 +996,40 @@ export default function MainDashboard() {
         )
       }
 
-      setFrames((current) => {
-        if (result.images.length === current.length) return result.images
-        // Resposta parcial: mantém os frames que a IA não devolveu.
-        return current.map((frame, position) => result.images[position] ?? frame)
-      })
-      setModalPreviewFrame(result.images[0] ?? null)
+      if (result.images.length === 1 && frames.length > 1) {
+        // A IA devolveu a spritesheet corrigida inteira: guarda a folha e deixa
+        // o efeito de recorte reconstruir os frames com a grade real detectada.
+        let resultGrid = { columns: gridColumns, rows: gridRows }
+        try {
+          const detected = await detectSpriteGrid(result.images[0])
+          if (detected.total === frames.length) resultGrid = detected
+        } catch (detectError) {
+          console.warn('[modal correction-grid]', detectError)
+        }
+        setGeneratedSheets(result.images)
+        setColumns(String(resultGrid.columns))
+        setRows(String(resultGrid.rows))
+        setAutoSlice(true)
+        try {
+          const sliced = await sliceSpritesheet(
+            result.images[0],
+            resultGrid.columns,
+            resultGrid.rows,
+          )
+          setModalPreviewFrame(sliced[0] ?? null)
+        } catch (sliceError) {
+          console.warn('[modal batch preview]', sliceError)
+          setModalPreviewFrame(null)
+        }
+      } else {
+        setGeneratedSheets(result.images)
+        setFrames(result.images)
+        setModalPreviewFrame(result.images[0] ?? null)
+      }
+
       setModalPrompt('')
       pushToast(
-        `${result.images.length} frame${result.images.length === 1 ? '' : 's'} corrigido${result.images.length === 1 ? '' : 's'} em lote.`,
+        `${frames.length} frame${frames.length === 1 ? '' : 's'} corrigido${frames.length === 1 ? '' : 's'} em lote.`,
         'success',
       )
     } catch (error) {
@@ -931,13 +1044,16 @@ export default function MainDashboard() {
     apiKey,
     appearance,
     artStyle,
+    columns,
+    frames,
+    generatedSheets,
     modalApplyingAll,
     modalApplyingSingle,
     modalPrompt,
-    frames,
     modelId,
     provider,
     pushToast,
+    reference,
     referenceFrames,
   ])
 

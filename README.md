@@ -201,9 +201,14 @@ Resposta:
   O resultado é uma spritesheet; a divisão em frames acontece só no frontend,
   com os mesmos campos Colunas/Linhas aplicados à referência e ao resultado.
 - **Correção** (`correction_prompt` presente): as `previous_generated_images`
-  são a fonte de verdade visual. Se `target_frame_index` for informado, apenas
-  aquele frame é corrigido (índice começa em `0`); caso contrário, a correção é
-  aplicada a todos os frames.
+  são a fonte de verdade visual.
+  - **Frame individual:** envie somente aquele frame e `target_frame_index: 0`
+    (o índice é relativo às imagens enviadas). O backend devolve um único frame.
+  - **Em lote:** envie a **spritesheet inteira** em uma única imagem, com
+    `target_frame_index: null`, `frame_count` e `grid_columns`/`grid_rows`. O
+    backend devolve a folha inteira corrigida na mesma grade.
+  - Depois de uma correção individual, o frontend remonta a spritesheet com
+    todos os frames para exportação e para as próximas correções em lote.
 - **Formatos de imagem**: Base64 puro ou data URL (`data:image/png;base64,...`).
   O backend detecta o MIME real (PNG, JPEG, WebP, GIF ou BMP).
 - **Limite de corpo**: a Vercel aceita ~4,5 MB por requisição. Reduza a
@@ -282,11 +287,12 @@ duas colunas em tablets):
 - Player lado a lado com a **animação original** e a **nova animação**, em loop
   sincronizado, controle de **FPS** e **Play/Pause**.
 - Filmstrip com os frames PNG numerados e o botão **`[ Editar Frame ]`** em cada
-  um (envia `target_frame_index` e corrige só aquele quadro).
+  um. A janela de edição se ajusta à tela (com rolagem) e a correção individual
+  envia só aquele frame; ao aplicar, a spritesheet é remontada automaticamente.
 
 ### Coluna direita — correção e exportação
-- **Correção em lote:** instrução textual aplicada a todos os frames atuais, que
-  são enviados como `previous_generated_images` para preservar o contexto.
+- **Correção em lote:** instrução textual aplicada à spritesheet inteira, enviada
+  como uma única imagem em `previous_generated_images` para preservar o contexto.
 - **Exportação:** `[ EXPORTAR SPRITESHEET PNG (GRID) ]` e
   `[ EXPORTAR GIF ANIMADO ]`, ambos processados localmente pela Canvas API.
 
