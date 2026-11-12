@@ -105,7 +105,7 @@ function readImageFile(file) {
           width: canvas.width,
           height: canvas.height,
           sourceWidth: width,
-          sourceHeight: height,
+          height: canvas.height,
           resized: true,
         })
       }
@@ -115,73 +115,7 @@ function readImageFile(file) {
   })
 }
 
-/**
- * Tenta adivinhar a grade de um spritesheet a partir das dimensões.
- *
- * @param {number} width
- * @param {number} height
- * @returns {{ columns: number, rows: number, autoSlice: boolean }}
- */
-/**
- * Tenta adivinhar a grade de um spritesheet a partir das dimensões.
- *
- * Estratégia: prioriza células QUADRADAS (sprites são tipicamente
- * quadrados: 16×16, 24×24, 32×32, 48×48, 64×64) e, quando há várias
- * opções válidas, escolhe a que resulta em MENOS frames (mais
- * conservador — evita fatiar demais uma imagem que pode ser um único
- * sprite grande).
- *
- * @param {number} width
- * @param {number} height
- * @returns {{ columns: number, rows: number, autoSlice: boolean }}
- */
-function guessGrid(width, height) {
-  /** @type {Array<{ columns: number, rows: number, total: number, score: number }>} */
-  const candidates = []
-
-  // 1) Tentar células quadradas padrão (mais provável para sprites)
-  for (const cell of [32, 24, 16, 48, 64, 8, 12, 20]) {
-    if (width % cell !== 0 || height % cell !== 0) continue
-    const columns = width / cell
-    const rows = height / cell
-    const total = columns * rows
-    if (total >= 2 && total <= 32) {
-      // Quanto mais próximo de quadrado (columns ≈ rows), melhor.
-      // Quanto menos frames, mais conservador.
-      const score = 100 - Math.abs(columns - rows) * 5 - total * 2
-      candidates.push({ columns, rows, total, score })
-    }
-  }
-
-  // 2) Se não encontrou célula quadrada, tentar retangular com lados múltiplos de 4
-  for (let cellW = 8; cellW <= width; cellW += 4) {
-    if (width % cellW !== 0) continue
-    for (let cellH = 8; cellH <= height; cellH += 4) {
-      if (height % cellH !== 0) continue
-      const columns = width / cellW
-      const rows = height / cellH
-      const total = columns * rows
-      if (total >= 2 && total <= 32) {
-        const aspectRatio = cellW / cellH
-        const score = 50 - Math.abs(aspectRatio - 1) * 10 - Math.abs(columns - rows) * 5 - total * 2
-        candidates.push({ columns, rows, total, score })
-      }
-    }
-  }
-
-  if (candidates.length === 0) {
-    return { columns: 1, rows: 1, autoSlice: false }
-  }
-
-  // Ordenar: menos frames primeiro (conservador), depois score maior
-  candidates.sort((a, b) => {
-    if (a.total !== b.total) return a.total - b.total
-    return b.score - a.score
-  })
-
-  const best = candidates[0]
-  return { columns: best.columns, rows: best.rows, autoSlice: true }
-}
+/** @typedef {string | Blob | File | HTMLImageElement | HTMLCanvasElement | ImageBitmap} ImageSource */
 
 const TOAST_STYLES = {
   success: {
@@ -413,7 +347,7 @@ export default function MainDashboard() {
     setCorrectionPrompt('')
     setCurrentFrameIndex(0)
     setModalOpen(false)
-  }, [provider, modelId, appearance, artStyle, reference, columns, rows, autoSlice])
+  }, [provider, modelId, appearance, artStyle, reference])
 
   /* ------------------------ Cronômetro ---------------------------------- */
   useEffect(() => {
@@ -478,10 +412,6 @@ export default function MainDashboard() {
     async (file) => {
       try {
         const image = await readImageFile(file)
-        const guess = guessGrid(
-          image.sourceWidth ?? image.width,
-          image.sourceHeight ?? image.height,
-        )
         setPresetId(null)
         setReference({
           dataUrl: image.dataUrl,
@@ -491,19 +421,10 @@ export default function MainDashboard() {
           size: file.size,
           kind: 'file',
         })
-        setColumns(String(guess.columns))
-        setRows(String(guess.rows))
-        setAutoSlice(guess.autoSlice)
         setReferenceError('')
         if (image.resized) {
           pushToast(
             `Imagem redimensionada para ${image.width}×${image.height} px para caber no limite.`,
-            'info',
-          )
-        }
-        if (!guess.autoSlice) {
-          pushToast(
-            'Imagem carregada como referência única (auto-fatiar desativado).',
             'info',
           )
         }
@@ -1001,25 +922,15 @@ export default function MainDashboard() {
             reference={reference}
             onFileSelected={handleFileSelected}
             onClearReference={handleClearReference}
-            autoSlice={autoSlice}
-            onAutoSliceChange={setAutoSlice}
-            columns={columns}
-            rows={rows}
-            onColumnsChange={setColumns}
-            onRowsChange={setRows}
-            referenceFrames={referenceFrames}
-            referenceBusy={referenceBusy}
-            referenceError={referenceError}
             appearance={appearance}
             onAppearanceChange={setAppearance}
             artStyle={artStyle}
-            onArtStyleChange={setArtStyle}
+            onArtStyleChange={onArtStyleChange}
             onGenerate={handleGenerate}
             generating={generating}
             elapsed={elapsed}
             canGenerate={canGenerate}
             generateHint={generateHint}
-            maxReferenceFrames={MAX_REFERENCE_FRAMES}
           />
         </section>
 
@@ -1038,6 +949,12 @@ export default function MainDashboard() {
             generationError={generationError}
             onEditFrame={handleEditFrame}
             editingFrame={modalOpen ? modalFrameIndex : null}
+            columns={columns}
+            rows={rows}
+            autoSlice={autoSlice}
+            onColumnsChange={setColumns}
+            onRowsChange={setRows}
+            onAutoSliceChange={setAutoSlice}
           />
         </section>
 

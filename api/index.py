@@ -749,6 +749,9 @@ ROLE RULES (strict):
   black and white, the final image MUST be black and white. If the style limits
   the palette, obey the limit even if the appearance description asks for more
   colors.
+- FRAME COUNT: You must output EXACTLY {frame_count} frame(s) in the sprite sheet.
+  Count the cells in the reference sprite sheet grid and match that count exactly.
+  Do not generate fewer or more frames than the reference grid contains.
 - Merge the three inputs into one coherent result: correct motion from the
   references, correct look from the appearance, correct rendering from the art
   style.

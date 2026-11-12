@@ -1,16 +1,23 @@
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
   Film,
+  Grid3X3,
+  Image as ImageIcon,
   ImageOff,
   LayoutGrid,
+  Loader2,
   Maximize2 as Maximize,
   RefreshCw,
+  Scan,
   Square,
+  Upload,
 } from 'lucide-react'
 
+import { sliceSpritesheet } from '../../utils/imagePipeline'
 import { formatElapsed } from '../../lib/api'
-import { Alert, Card, Pill } from './ui'
+import { Alert, Card, Field, Pill, inputClass, labelClass } from './ui'
 
 /**
  * Um dos lados do player (referência ou resultado) para UM frame.
@@ -77,7 +84,29 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
 }
 
 /**
- * Coluna central: frames lado a lado com navegação frame a frame.
+ * Coluna central: frames lado a lado com navegação frame a frame e controle de grid.
+ *
+ * @param {{
+ *   referenceFrames: string[],
+ *   frames: string[],
+ *   fps: number,
+ *   onFpsChange: (value: number) => void,
+ *   viewMode: 'loop' | 'frame-by-frame',
+ *   onViewModeChange: (value: 'loop' | 'frame-by-frame') => void,
+ *   currentFrameIndex: number,
+ *   onCurrentFrameIndexChange: (value: number) => void,
+ *   generating: boolean,
+ *   referenceBusy: boolean,
+ *   generationError: string,
+ *   onEditFrame: (index: number) => void,
+ *   editingFrame: number | null,
+ *   columns: string,
+ *   rows: string,
+ *   autoSlice: boolean,
+ *   onColumnsChange: (value: string) => void,
+ *   onRowsChange: (value: string) => void,
+ *   onAutoSliceChange: (value: boolean) => void,
+ * }} props
  */
 export default function PreviewPanel({
   referenceFrames,
@@ -93,8 +122,13 @@ export default function PreviewPanel({
   generationError,
   onEditFrame,
   editingFrame,
+  columns,
+  rows,
+  autoSlice,
+  onColumnsChange,
+  onRowsChange,
+  onAutoSliceChange,
 }) {
-  // Garantir que os arrays existem e são arrays
   const refs = Array.isArray(referenceFrames) ? referenceFrames : []
   const gens = Array.isArray(frames) ? frames : []
   const totalFrames = Math.max(refs.length, gens.length)
@@ -103,10 +137,53 @@ export default function PreviewPanel({
   const hasFrames = gens.length > 0
   const hasReference = refs.length > 0
 
-  // Se o índice está fora do range, corrigir
+  // Estado para os frames após slicing (grid aplicado)
+  const [slicedFrames, setSlicedFrames] = useState([])
+  const [slicing, setSlicing] = useState(false)
+
+  // Recalcular slicing quando mudar colunas/linhas/autoSlice ou frames
+  useEffect(() => {
+    if (!autoSlice || gens.length === 0) {
+      setSlicedFrames(gens)
+      return
+    }
+
+    const cols = Math.max(1, Number.parseInt(columns, 10) || 1)
+    const rows = Math.max(1, Number.parseInt(rows, 10) || 1)
+    const isSingleImage = cols === 1 && rows === 1
+
+    if (isSingleImage) {
+      setSlicedFrames(gens)
+      return
+    }
+
+    setSlicing(true)
+    ;(async () => {
+      try {
+        // Se há um único frame (spritesheet inteiro), fatiar em grid
+        if (gens.length === 1) {
+          const sliced = await sliceSpritesheet(gens[0], cols, rows)
+          if (sliced.length > 0) {
+            setSlicedFrames(sliced)
+            return
+          }
+        }
+        // Se já há múltiplos frames, manter como está
+        setSlicedFrames(gens)
+      } catch (error) {
+        console.error('[slice-spritesheet]', error)
+        setSlicedFrames(gens)
+      } finally {
+        setSlicing(false)
+      }
+    })()
+  }, [gens, columns, rows, autoSlice])
+
+  const displayFrames = slicedFrames.length > 0 ? slicedFrames : gens
+  const displayTotal = Math.max(refs.length, displayFrames.length)
+
   if (totalFrames > 0 && (currentFrameIndex == null || currentFrameIndex < 0 || currentFrameIndex >= totalFrames)) {
-    // Não chamar onCurrentFrameIndexChange aqui para evitar loop infinito;
-    // o safeIndex é usado localmente para renderização.
+    // Índice fora do range, corrigir silenciosamente
   }
 
   return (
@@ -199,11 +276,11 @@ export default function PreviewPanel({
           <FrameView
             label="Novo frame"
             accent="cyan"
-            frame={hasFrames && gens.length > 0 ? gens[safeIndex % gens.length] : null}
+            frame={displayFrames.length > 0 ? displayFrames[safeIndex % displayFrames.length] : null}
             frameIndex={safeIndex}
-            totalFrames={gens.length}
-            loading={generating}
-            loadingLabel="Gerando frame…"
+            totalFrames={displayFrames.length}
+            loading={generating || slicing}
+            loadingLabel={slicing ? 'Aplicando grade…' : 'Gerando frame…'}
             emptyLabel="Gere um spritesheet para ver o resultado aqui."
           />
         </div>
@@ -215,15 +292,89 @@ export default function PreviewPanel({
         )}
       </Card>
 
+      {/* Controle de Grid - aqui no meio, não apaga a imagem ao mudar */}
+      <Card
+        title="Grade de Frames (Grid)"
+        subtitle="Divide o spritesheet gerado em frames individuais para exibição"
+        icon={Grid3X3}
+        bodyClassName="p-3"
+      >
+        <div className="space-y-3">
+          <label className="flex cursor-pointer items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
+              <Grid3X3 className="size-3.5 text-cyan-400" />
+              Auto-fatiar grid
+            </span>
+            <input
+              type="checkbox"
+              checked={autoSlice}
+              onChange={(event) => onAutoSliceChange(event.target.checked)}
+              className="size-4 accent-cyan-400"
+            />
+          </label>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className={`${labelClass} mb-1`} htmlFor="grid-columns">
+                Colunas
+              </label>
+              <input
+                id="grid-columns"
+                type="number"
+                min={1}
+                max={64}
+                value={columns}
+                disabled={!autoSlice}
+                onChange={(event) => onColumnsChange(event.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className={`${labelClass} mb-1`} htmlFor="grid-rows">
+                Linhas
+              </label>
+              <input
+                id="grid-rows"
+                type="number"
+                min={1}
+                max={64}
+                value={rows}
+                disabled={!autoSlice}
+                onChange={(event) => onRowsChange(event.target.value)}
+                className={inputClass}
+              />
+            </div>
+          </div>
+
+          <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+            <span className="text-slate-500">
+              {slicing ? (
+                <span className="inline-flex items-center gap-1.5 text-cyan-300">
+                  <Loader2 className="size-3 animate-spin" />
+                  aplicando grade…
+                </span>
+              ) : (
+                `${displayFrames.length} frame${displayFrames.length === 1 ? '' : 's'}`
+              )}
+            </span>
+            {!autoSlice && (
+              <span className="text-amber-300 text-[10px]">
+                Grade desativada — imagem única
+              </span>
+            )}
+          </div>
+        </div>
+      </Card>
+
       {/* Filmstrip */}
       <Card
         title="Filmstrip"
         subtitle="Todos os frames individuais"
         icon={Film}
-        badge={<Pill tone={hasFrames ? 'cyan' : 'neutral'}>{gens.length} frames</Pill>}
+        badge={<Pill tone={hasFrames ? 'cyan' : 'neutral'}>{displayFrames.length} frames</Pill>}
         bodyClassName="p-3"
       >
-        {!hasFrames ? (
+        {!displayFrames.length ? (
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-10 text-center">
             <Film className="size-7 text-slate-600" />
             <p className="text-[12px] font-medium text-slate-400">
@@ -237,7 +388,7 @@ export default function PreviewPanel({
           </div>
         ) : (
           <div className="grid max-h-[300px] grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-2 overflow-y-auto pr-1">
-            {gens.map((frame, index) => {
+            {displayFrames.map((frame, index) => {
               const isCurrent = index === safeIndex
               const isEditing = editingFrame === index
               const frameKey = String(frame ?? '').slice(-24)
@@ -295,7 +446,7 @@ export default function PreviewPanel({
           </div>
         )}
 
-        {hasFrames && (
+        {displayFrames.length && (
           <p className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-500">
             <span className="size-3">✎</span>
             Clique em qualquer frame para vê-lo lado a lado. Edite um frame para corrigi-lo individualmente.

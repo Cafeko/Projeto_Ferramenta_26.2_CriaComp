@@ -1,11 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Film,
-  Grid3X3,
   Image as ImageIcon,
   Loader2,
   Palette,
-  RefreshCw,
   Sparkles,
   Upload,
   User,
@@ -25,15 +23,6 @@ import { Alert, Card, Field, PrimaryButton, inputClass, labelClass } from './ui'
  *   reference: { dataUrl: string, width: number, height: number, name: string, kind: string } | null,
  *   onFileSelected: (file: File) => void,
  *   onClearReference: () => void,
- *   autoSlice: boolean,
- *   onAutoSliceChange: (value: boolean) => void,
- *   columns: string,
- *   rows: string,
- *   onColumnsChange: (value: string) => void,
- *   onRowsChange: (value: string) => void,
- *   referenceFrames: string[],
- *   referenceBusy: boolean,
- *   referenceError: string,
  *   appearance: string,
  *   onAppearanceChange: (value: string) => void,
  *   artStyle: string,
@@ -43,7 +32,6 @@ import { Alert, Card, Field, PrimaryButton, inputClass, labelClass } from './ui'
  *   elapsed: number,
  *   canGenerate: boolean,
  *   generateHint: string,
- *   maxReferenceFrames: number,
  * }} props
  */
 export default function ReferencePanel({
@@ -52,15 +40,6 @@ export default function ReferencePanel({
   reference,
   onFileSelected,
   onClearReference,
-  autoSlice,
-  onAutoSliceChange,
-  columns,
-  rows,
-  onColumnsChange,
-  onRowsChange,
-  referenceFrames,
-  referenceBusy,
-  referenceError,
   appearance,
   onAppearanceChange,
   artStyle,
@@ -70,7 +49,6 @@ export default function ReferencePanel({
   elapsed,
   canGenerate,
   generateHint,
-  maxReferenceFrames,
 }) {
   const inputRef = useRef(null)
   const [dragging, setDragging] = useState(false)
@@ -100,9 +78,6 @@ export default function ReferencePanel({
     const file = event.dataTransfer?.files?.[0]
     if (file) onFileSelected(file)
   }
-
-  const frameCount = referenceFrames.length
-  const limited = frameCount > maxReferenceFrames
 
   return (
     <div className="space-y-4">
@@ -212,8 +187,7 @@ export default function ReferencePanel({
                       {reference.name}
                     </p>
                     <p className="mt-0.5 text-[11px] text-slate-500">
-                      {referenceFrames.length} frame{referenceFrames.length === 1 ? '' : 's'}{' '}
-                      na referência
+                      Imagem de referência enviada
                     </p>
                     <div className="mt-1.5 flex items-center gap-2">
                       <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-cyan-300">
@@ -245,80 +219,6 @@ export default function ReferencePanel({
               )}
             </div>
           </div>
-
-          {reference && (
-            <div className="rounded-lg border border-white/5 bg-black/20 p-3">
-              <label className="flex cursor-pointer items-center justify-between gap-2">
-                <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
-                  <Grid3X3 className="size-3.5 text-cyan-400" />
-                  Auto-fatiar grid
-                </span>
-                <input
-                  type="checkbox"
-                  checked={autoSlice}
-                  onChange={(event) => onAutoSliceChange(event.target.checked)}
-                  className="size-4 accent-cyan-400"
-                />
-              </label>
-
-              <div className="mt-2.5 grid grid-cols-2 gap-2">
-                <div>
-                  <label className={`${labelClass} mb-1`} htmlFor="grid-columns">
-                    Colunas
-                  </label>
-                  <input
-                    id="grid-columns"
-                    type="number"
-                    min={1}
-                    max={64}
-                    value={columns}
-                    disabled={!autoSlice}
-                    onChange={(event) => onColumnsChange(event.target.value)}
-                    className={inputClass}
-                  />
-                </div>
-                <div>
-                  <label className={`${labelClass} mb-1`} htmlFor="grid-rows">
-                    Linhas
-                  </label>
-                  <input
-                    id="grid-rows"
-                    type="number"
-                    min={1}
-                    max={64}
-                    value={rows}
-                    disabled={!autoSlice}
-                    onChange={(event) => onRowsChange(event.target.value)}
-                    className={inputClass}
-                  />
-                </div>
-              </div>
-
-              <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
-                <span className="text-slate-500">
-                  {referenceBusy ? (
-                    <span className="inline-flex items-center gap-1.5 text-cyan-300">
-                      <Loader2 className="size-3 animate-spin" />
-                      fatiando…
-                    </span>
-                  ) : (
-                    `${frameCount} frame${frameCount === 1 ? '' : 's'} detectado${frameCount === 1 ? '' : 's'}`
-                  )}
-                </span>
-                {limited && (
-                  <span className="font-medium text-amber-300">
-                    limitados a {maxReferenceFrames} frames
-                  </span>
-                )}
-              </div>
-
-              {referenceError && (
-                <Alert tone="warning" className="mt-2">
-                  {referenceError}
-                </Alert>
-              )}
-            </div>
-          )}
         </div>
       </Card>
 
