@@ -31,7 +31,6 @@ import {
   exportGIF,
   sliceSpritesheet,
 } from '../utils/imagePipeline'
-import { PRESETS, createPresetSheet } from '../utils/presets'
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 const MAX_REFERENCE_SIDE = 1200
@@ -116,53 +115,6 @@ function readImageFile(file) {
   })
 }
 
-/**
- * Monta o objeto de referência de um preset (Data URL + dimensões).
- * Retorna `null` se o Canvas não estiver disponível.
- *
- * @param {string} id
- */
-function createPresetReference(id) {
-  const preset = PRESETS[id]
-  if (!preset) return null
-  try {
-    return {
-      dataUrl: createPresetSheet(id),
-      width: 32 * preset.frames.length,
-      height: 32,
-      name: `${preset.label.toLowerCase()}-preset.png`,
-      kind: 'preset',
-    }
-  } catch {
-    return null
-  }
-}
-
-/**
- * Escolhe uma grade compacta e previsível para a spritesheet de SAÍDA.
- * Não depende do formato da referência — só da quantidade de frames.
- * Ex.: 16 → 4×4, 12 → 4×3, 8 → 4×2, 4 → 2×2, 3 → 3×1.
- *
- * @param {number} total
- * @returns {{ columns: number, rows: number }}
- */
-function chooseOutputGrid(total) {
-  const safe = Math.max(1, Math.min(64, Math.floor(total) || 1))
-  let best = { columns: safe, rows: 1 }
-  let bestScore = Number.POSITIVE_INFINITY
-  for (let columns = 1; columns <= safe; columns += 1) {
-    if (safe % columns !== 0) continue
-    const rows = safe / columns
-    if (columns < rows) continue
-    const score = columns - rows
-    if (score < bestScore) {
-      bestScore = score
-      best = { columns, rows }
-    }
-  }
-  return best
-}
-
 /** @typedef {string | Blob | File | HTMLImageElement | HTMLCanvasElement | ImageBitmap} ImageSource */
 
 const TOAST_STYLES = {
@@ -229,19 +181,18 @@ export default function MainDashboard() {
   const [modelId, setModelId] = useState('')
 
   /* --------------------------- Referência ------------------------------- */
-  const [presetId, setPresetId] = useState('walk')
-  const [reference, setReference] = useState(() => createPresetReference('walk'))
+  const [reference, setReference] = useState(null)
   // Grade real da imagem de referência (detectada nos pixels). É ELA que define
-  // quantos frames a IA deve gerar — os campos Colunas/Linhas do painel central
-  // servem só para recortar/exibir o resultado.
+  // quantos frames a IA deve gerar. Os campos Colunas/Linhas do painel central
+  // recortam tanto a referência quanto o resultado.
   const [referenceGrid, setReferenceGrid] = useState({
-    columns: 4,
+    columns: 1,
     rows: 1,
-    total: 4,
+    total: 1,
   })
-  const [columns, setColumns] = useState('2')
-  const [rows, setRows] = useState('2')
-  const [autoSlice, setAutoSlice] = useState(true)
+  const [columns, setColumns] = useState('1')
+  const [rows, setRows] = useState('1')
+  const [autoSlice, setAutoSlice] = useState(false)
   const [referenceFrames, setReferenceFrames] = useState([])
   const [referenceBusy, setReferenceBusy] = useState(false)
   const [referenceError, setReferenceError] = useState('')
@@ -301,29 +252,6 @@ export default function MainDashboard() {
     setToasts((current) => current.filter((toast) => toast.id !== id))
   }, [])
 
-  /* ------------------------- Preset inicial ------------------------------ */
-  const selectPreset = useCallback(
-    (id) => {
-      const preset = PRESETS[id]
-      if (!preset) return
-      const next = createPresetReference(id)
-      if (!next) {
-        pushToast('Não foi possível gerar o preset neste navegador.', 'error')
-        return
-      }
-      setPresetId(id)
-      setReference(next)
-      const total = preset.frames.length
-      const output = chooseOutputGrid(total)
-      setReferenceGrid({ columns: total, rows: 1, total })
-      setColumns(String(output.columns))
-      setRows(String(output.rows))
-      setAutoSlice(total > 1)
-      setReferenceError('')
-    },
-    [pushToast],
-  )
-
   /* ------------------ Fatiamento da referência -------------------------- */
   useEffect(() => {
     if (!reference?.dataUrl) {
@@ -332,11 +260,12 @@ export default function MainDashboard() {
       return undefined
     }
 
-    // A referência é sempre recortada na grade REAL dela (detectada ao carregar
-    // a imagem). Assim cada frame comparado lado a lado corresponde à posição
-    // original, independentemente da grade usada para exibir o resultado.
-    const gridColumns = referenceGrid.columns
-    const gridRows = referenceGrid.rows
+    // Os mesmos campos Colunas/Linhas do painel central recortam a referência
+    // antiga e o resultado novo, para a comparação ficar alinhada.
+    const parsedColumns = Number.parseInt(columns, 10)
+    const parsedRows = Number.parseInt(rows, 10)
+    const gridColumns = autoSlice ? parsedColumns : 1
+    const gridRows = autoSlice ? parsedRows : 1
 
     if (
       !Number.isInteger(gridColumns) ||
@@ -373,7 +302,7 @@ export default function MainDashboard() {
     return () => {
       cancelled = true
     }
-  }, [reference, referenceGrid])
+  }, [reference, autoSlice, columns, rows])
 
   /* ------------------ Fatiamento do resultado gerado --------------------- */
   // O spritesheet devolvido pela IA é guardado inteiro. Sempre que a grade
@@ -514,8 +443,8 @@ export default function MainDashboard() {
         const image = await readImageFile(file)
 
         // Detecta nos pixels a grade real da spritesheet (ex.: 4×4 = 16 frames).
-        // É esse total que a IA deve gerar; a grade do painel central só recorta
-        // o resultado para exibição.
+        // É esse total que a IA deve gerar e também o recorte inicial da
+        // referência e do resultado no painel central.
         let detected = { columns: 1, rows: 1, total: 1 }
         try {
           detected = await detectSpriteGrid(image.dataUrl)
@@ -524,7 +453,6 @@ export default function MainDashboard() {
         }
 
         const total = detected.columns * detected.rows
-        setPresetId(null)
         setReference({
           dataUrl: image.dataUrl,
           width: image.width,
@@ -538,10 +466,9 @@ export default function MainDashboard() {
           rows: detected.rows,
           total,
         })
-        // A grade de exibição/recorte usa o formato compacto da SAÍDA.
-        const output = chooseOutputGrid(total)
-        setColumns(String(output.columns))
-        setRows(String(output.rows))
+        // A grade do meio começa igual à grade real da referência.
+        setColumns(String(detected.columns))
+        setRows(String(detected.rows))
         setAutoSlice(total > 1)
         setReferenceError('')
 
@@ -573,56 +500,13 @@ export default function MainDashboard() {
 
   const handleClearReference = useCallback(() => {
     setReference(null)
-    setPresetId(null)
     setReferenceFrames([])
     setReferenceGrid({ columns: 1, rows: 1, total: 1 })
+    setColumns('1')
+    setRows('1')
+    setAutoSlice(false)
     setReferenceError('')
   }, [])
-
-  /** Ajusta manualmente a grade REAL da referência (define os frames da IA). */
-  const handleReferenceGridChange = useCallback(
-    (axis, value) => {
-      const otherAxis = axis === 'columns' ? 'rows' : 'columns'
-      const otherValue = Math.max(1, Number(referenceGrid[otherAxis]) || 1)
-      // A saída suporta no máximo 64 frames no total.
-      const maxValue = Math.max(1, Math.floor(64 / otherValue))
-      const parsed = Math.max(
-        1,
-        Math.min(maxValue, Number.parseInt(value, 10) || 1),
-      )
-      const next = { ...referenceGrid, [axis]: parsed }
-      next.total = next.columns * next.rows
-      const output = chooseOutputGrid(next.total)
-      setReferenceGrid(next)
-      // A grade de exibição/recorte segue o formato compacto da saída.
-      setColumns(String(output.columns))
-      setRows(String(output.rows))
-      setAutoSlice(true)
-    },
-    [referenceGrid],
-  )
-
-  /** Roda a detecção de grade novamente na referência atual. */
-  const handleDetectReferenceGrid = useCallback(async () => {
-    if (!reference?.dataUrl) return
-    try {
-      const detected = await detectSpriteGrid(reference.dataUrl)
-      const total = detected.columns * detected.rows
-      const output = chooseOutputGrid(total)
-      setReferenceGrid({ ...detected, total })
-      setColumns(String(output.columns))
-      setRows(String(output.rows))
-      setAutoSlice(total > 1)
-      pushToast(
-        total > 1
-          ? `Grade detectada: ${detected.columns}×${detected.rows} (${total} frames).`
-          : 'Nenhuma grade detectada: 1 frame.',
-        total > 1 ? 'info' : 'warning',
-      )
-    } catch (error) {
-      pushToast(describeApiError(error), 'error')
-    }
-  }, [reference, pushToast])
 
   const canGenerate = Boolean(
     apiKey.trim() &&
@@ -636,7 +520,7 @@ export default function MainDashboard() {
   const generateHint = useMemo(() => {
     if (!apiKey.trim()) return 'Informe e valide sua chave de API para começar.'
     if (!modelId) return 'Valide a chave e escolha um modelo de imagem.'
-    if (referenceFrames.length === 0) return 'Escolha um preset ou envie uma referência.'
+    if (referenceFrames.length === 0) return 'Envie uma referência de movimento.'
     if (!appearance.trim()) return 'Descreva a aparência do personagem.'
     if (!artStyle.trim()) return 'Defina o estilo de arte.'
     return `Pronto para gerar ${referenceGrid.total ?? referenceGrid.columns * referenceGrid.rows} frame(s) — grade ${referenceGrid.columns}×${referenceGrid.rows}.`
@@ -664,8 +548,12 @@ export default function MainDashboard() {
         1,
         Math.min(64, Math.floor(referenceTotal) || 1),
       )
-      // A saída usa uma grade compacta e previsível (16 → 4×4, 12 → 4×3...).
-      const outputGrid = chooseOutputGrid(requestedFrameCount)
+      // O formato pedido à IA é a própria grade detectada na referência, para
+      // que a grade do meio recorte referência e resultado da mesma forma.
+      const requestedGrid = {
+        columns: Math.max(1, Math.min(64, Number(referenceGrid.columns) || 1)),
+        rows: Math.max(1, Math.min(64, Number(referenceGrid.rows) || 1)),
+      }
 
       try {
         ensurePayloadSize(referenceImage)
@@ -695,8 +583,8 @@ export default function MainDashboard() {
           characterAppearance: appearance.trim(),
           artStyle: artStyle.trim(),
           frameCount: requestedFrameCount,
-          gridColumns: outputGrid.columns,
-          gridRows: outputGrid.rows,
+          gridColumns: requestedGrid.columns,
+          gridRows: requestedGrid.rows,
         })
       } catch (apiError) {
         const message = describeApiError(apiError)
@@ -732,7 +620,7 @@ export default function MainDashboard() {
       // A grade pedida à IA pode não ser respeitada: detectamos a grade REAL da
       // imagem devolvida e usamos ela para recortar. Assim os frames continuam
       // corretos mesmo se o modelo entregar outra organização.
-      let displayGrid = outputGrid
+      let displayGrid = requestedGrid
       if (result.images.length === 1 && requestedFrameCount > 1) {
         try {
           const detected = await detectSpriteGrid(result.images[0])
@@ -1109,8 +997,6 @@ export default function MainDashboard() {
           />
 
           <ReferencePanel
-            presetId={presetId}
-            onSelectPreset={selectPreset}
             reference={reference}
             onFileSelected={handleFileSelected}
             onClearReference={handleClearReference}
@@ -1118,9 +1004,6 @@ export default function MainDashboard() {
             onAppearanceChange={setAppearance}
             artStyle={artStyle}
             onArtStyleChange={setArtStyle}
-            referenceGrid={referenceGrid}
-            onReferenceGridChange={handleReferenceGridChange}
-            onDetectReferenceGrid={handleDetectReferenceGrid}
             onGenerate={handleGenerate}
             generating={generating}
             elapsed={elapsed}

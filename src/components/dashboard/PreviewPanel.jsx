@@ -251,7 +251,7 @@ export default function PreviewPanel({
       {/* Controle de Grid - aqui no meio, não apaga a imagem ao mudar */}
       <Card
         title="Grade de Frames (Grid)"
-        subtitle="Só recorta o resultado para exibição"
+        subtitle="Recorta a referência e o resultado"
         icon={Grid3X3}
         bodyClassName="p-3"
       >
@@ -261,9 +261,9 @@ export default function PreviewPanel({
             <strong className="text-cyan-300">
               {referenceTotal} frame{referenceTotal === 1 ? '' : 's'}
             </strong>{' '}
-            conforme a grade da referência ({referenceGrid?.columns}×
-            {referenceGrid?.rows}). Os campos abaixo apenas recortam o resultado
-            para exibição — mudar a grade não altera a quantidade gerada.
+            conforme a grade detectada na referência ({referenceGrid?.columns}×
+            {referenceGrid?.rows}). Os campos abaixo recortam a referência e o
+            resultado — mudar a grade não altera a quantidade gerada.
           </div>
 
           <label className="flex cursor-pointer items-center justify-between gap-2">

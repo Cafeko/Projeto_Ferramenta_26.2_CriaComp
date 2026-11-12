@@ -1,12 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   Film,
-  Grid3X3,
   Image as ImageIcon,
-  Loader2,
   Palette,
   RefreshCw,
-  ScanLine,
   Sparkles,
   Upload,
   User,
@@ -14,15 +11,15 @@ import {
 } from 'lucide-react'
 
 import { formatElapsed } from '../../lib/api'
-import { PRESET_OPTIONS, createPresetSheet } from '../../utils/presets'
-import { Card, Field, PrimaryButton, inputClass, labelClass } from './ui'
+import { Card, Field, PrimaryButton, inputClass } from './ui'
 
 /**
  * Coluna esquerda: referência de movimento, prompts e botão de geração.
  *
+ * Os presets rápidos foram retirados da interface, mas o gerador procedural
+ * continua disponível em `src/utils/presets.js` para uso futuro.
+ *
  * @param {{
- *   presetId: string | null,
- *   onSelectPreset: (id: string) => void,
  *   reference: { dataUrl: string, width: number, height: number, name: string, kind: string } | null,
  *   onFileSelected: (file: File) => void,
  *   onClearReference: () => void,
@@ -30,9 +27,6 @@ import { Card, Field, PrimaryButton, inputClass, labelClass } from './ui'
  *   onAppearanceChange: (value: string) => void,
  *   artStyle: string,
  *   onArtStyleChange: (value: string) => void,
- *   referenceGrid: { columns: number, rows: number, total?: number },
- *   onReferenceGridChange: (axis: 'columns' | 'rows', value: string) => void,
- *   onDetectReferenceGrid: () => Promise<void> | void,
  *   onGenerate: () => void,
  *   generating: boolean,
  *   elapsed: number,
@@ -41,8 +35,6 @@ import { Card, Field, PrimaryButton, inputClass, labelClass } from './ui'
  * }} props
  */
 export default function ReferencePanel({
-  presetId,
-  onSelectPreset,
   reference,
   onFileSelected,
   onClearReference,
@@ -50,9 +42,6 @@ export default function ReferencePanel({
   onAppearanceChange,
   artStyle,
   onArtStyleChange,
-  referenceGrid,
-  onReferenceGridChange,
-  onDetectReferenceGrid,
   onGenerate,
   generating,
   elapsed,
@@ -61,22 +50,6 @@ export default function ReferencePanel({
 }) {
   const inputRef = useRef(null)
   const [dragging, setDragging] = useState(false)
-  const [thumbs, setThumbs] = useState({})
-  const [detecting, setDetecting] = useState(false)
-
-  // Miniaturas dos presets: geradas uma única vez no navegador.
-  useEffect(() => {
-    try {
-      /** @type {Record<string, string>} */
-      const next = {}
-      for (const option of PRESET_OPTIONS) {
-        next[option.id] = createPresetSheet(option.id)
-      }
-      setThumbs(next)
-    } catch {
-      setThumbs({})
-    }
-  }, [])
 
   function openPicker() {
     inputRef.current?.click()
@@ -103,214 +76,83 @@ export default function ReferencePanel({
           ) : null
         }
       >
-        <div className="space-y-3">
-          <div>
-            <p className={labelClass}>
-              <Sparkles className="size-3.5" />
-              Presets rápidos
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              {PRESET_OPTIONS.map((option) => {
-                const active = presetId === option.id
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => onSelectPreset(option.id)}
-                    className={`group overflow-hidden rounded-lg border p-1.5 text-left transition ${
-                      active
-                        ? 'border-cyan-400/60 bg-cyan-400/10 shadow-md shadow-cyan-950/40'
-                        : 'border-white/10 bg-black/25 hover:border-white/25 hover:bg-white/[0.04]'
-                    }`}
-                    aria-pressed={active}
-                  >
-                    <span className="bg-checkerboard flex items-center justify-center overflow-hidden rounded h-12 min-w-[72px]">
-                      {thumbs[option.id] ? (
-                        <img
-                          src={thumbs[option.id]}
-                          alt=""
-                          className="pixelated h-full w-auto object-contain"
-                        />
-                      ) : (
-                        <Film className="size-5 text-slate-600" />
-                      )}
-                    </span>
-                    <span
-                      className={`mt-1 block text-center text-[11px] font-semibold ${
-                        active ? 'text-cyan-200' : 'text-slate-400 group-hover:text-slate-200'
-                      }`}
-                    >
-                      {option.label}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+        <div>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/png,image/webp,image/gif,image/jpeg,image/*"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) onFileSelected(file)
+              event.target.value = ''
+            }}
+          />
 
-          <div>
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/png,image/webp,image/gif,image/jpeg,image/*"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                if (file) onFileSelected(file)
-                event.target.value = ''
-              }}
-            />
-
-            <div
-              role="button"
-              tabIndex={0}
-              onClick={openPicker}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  openPicker()
-                }
-              }}
-              onDragOver={(event) => {
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={openPicker}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault()
-                setDragging(true)
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={handleDrop}
-              className={`cursor-pointer rounded-lg border border-dashed p-3 transition focus-visible:ring-2 focus-visible:ring-cyan-400/40 focus-visible:outline-none ${
-                dragging
-                  ? 'border-cyan-400/70 bg-cyan-400/10'
-                  : 'border-white/15 bg-black/20 hover:border-cyan-400/40 hover:bg-white/[0.03]'
-              }`}
-            >
-              {reference ? (
-                <div className="flex items-center gap-3">
-                  <div className="bg-checkerboard grid h-14 w-20 shrink-0 place-items-center overflow-hidden rounded border border-white/10">
-                    <img
-                      src={reference.dataUrl}
-                      alt="Referência de movimento"
-                      className="pixelated max-h-14 max-w-20 object-contain"
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12px] font-medium text-slate-200">
-                      {reference.name}
-                    </p>
-                    <p className="mt-0.5 text-[11px] text-slate-500">
-                      Imagem de referência enviada
-                    </p>
-                    <div className="mt-1.5 flex items-center gap-2">
-                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-cyan-300">
-                        <RefreshCw className="size-3" />
-                        trocar
-                      </span>
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          onClearReference()
-                        }}
-                        className="inline-flex items-center gap-1 rounded px-1 text-[10px] font-semibold text-slate-400 transition hover:bg-white/5 hover:text-rose-300"
-                      >
-                        <X className="size-3" />
-                        remover
-                      </button>
-                    </div>
-                  </div>
+                openPicker()
+              }
+            }}
+            onDragOver={(event) => {
+              event.preventDefault()
+              setDragging(true)
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+            className={`cursor-pointer rounded-lg border border-dashed p-3 transition focus-visible:ring-2 focus-visible:ring-cyan-400/40 focus-visible:outline-none ${
+              dragging
+                ? 'border-cyan-400/70 bg-cyan-400/10'
+                : 'border-white/15 bg-black/20 hover:border-cyan-400/40 hover:bg-white/[0.03]'
+            }`}
+          >
+            {reference ? (
+              <div className="flex items-center gap-3">
+                <div className="bg-checkerboard grid h-14 w-20 shrink-0 place-items-center overflow-hidden rounded border border-white/10">
+                  <img
+                    src={reference.dataUrl}
+                    alt="Referência de movimento"
+                    className="pixelated max-h-14 max-w-20 object-contain"
+                  />
                 </div>
-              ) : (
-                <div className="flex flex-col items-center gap-1.5 py-2 text-center">
-                  <Upload className="size-5 text-slate-500" />
-                  <p className="text-[12px] font-medium text-slate-300">
-                    Arraste um PNG ou spritesheet
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[12px] font-medium text-slate-200">
+                    {reference.name}
                   </p>
-                  <p className="text-[11px] text-slate-500">ou clique para escolher</p>
-                </div>
-              )}
-            </div>
-
-            {reference && (
-              <div className="rounded-lg border border-white/5 bg-black/20 p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
-                    <Grid3X3 className="size-3.5 text-cyan-400" />
-                    Frames da referência
+                  <p className="mt-0.5 text-[11px] text-slate-500">
+                    Imagem de referência enviada
                   </p>
-                  <button
-                    type="button"
-                    onClick={async (event) => {
-                      event.stopPropagation()
-                      setDetecting(true)
-                      try {
-                        await onDetectReferenceGrid()
-                      } finally {
-                        setDetecting(false)
-                      }
-                    }}
-                    disabled={detecting}
-                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-cyan-300 transition hover:bg-white/5 disabled:opacity-50"
-                  >
-                    {detecting ? (
-                      <Loader2 className="size-3 animate-spin" />
-                    ) : (
-                      <ScanLine className="size-3" />
-                    )}
-                    detectar
-                  </button>
-                </div>
-
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <div>
-                    <label
-                      className={`${labelClass} mb-1`}
-                      htmlFor="ref-grid-columns"
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-cyan-300">
+                      <RefreshCw className="size-3" />
+                      trocar
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onClearReference()
+                      }}
+                      className="inline-flex items-center gap-1 rounded px-1 text-[10px] font-semibold text-slate-400 transition hover:bg-white/5 hover:text-rose-300"
                     >
-                      Colunas
-                    </label>
-                    <input
-                      id="ref-grid-columns"
-                      type="number"
-                      min={1}
-                      max={64}
-                      value={referenceGrid.columns}
-                      onChange={(event) =>
-                        onReferenceGridChange('columns', event.target.value)
-                      }
-                      className={inputClass}
-                    />
-                  </div>
-                  <div>
-                    <label
-                      className={`${labelClass} mb-1`}
-                      htmlFor="ref-grid-rows"
-                    >
-                      Linhas
-                    </label>
-                    <input
-                      id="ref-grid-rows"
-                      type="number"
-                      min={1}
-                      max={64}
-                      value={referenceGrid.rows}
-                      onChange={(event) =>
-                        onReferenceGridChange('rows', event.target.value)
-                      }
-                      className={inputClass}
-                    />
+                      <X className="size-3" />
+                      remover
+                    </button>
                   </div>
                 </div>
-
-                <p className="mt-2 text-[11px] text-slate-500">
-                  <strong className="text-cyan-300">
-                    {referenceGrid.total ??
-                      referenceGrid.columns * referenceGrid.rows}{' '}
-                    frame{(referenceGrid.total ??
-                      referenceGrid.columns * referenceGrid.rows) === 1
-                      ? ''
-                      : 's'}
-                  </strong>{' '}
-                  — a IA vai gerar exatamente essa quantidade.
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-1.5 py-2 text-center">
+                <Upload className="size-5 text-slate-500" />
+                <p className="text-[12px] font-medium text-slate-300">
+                  Arraste um PNG ou spritesheet
                 </p>
+                <p className="text-[11px] text-slate-500">ou clique para escolher</p>
               </div>
             )}
           </div>

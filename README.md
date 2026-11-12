@@ -48,7 +48,7 @@ Artistas & Designers: Para explorar variações visuais e rascunhar movimentaç�
 │   ├── lib/api.js        # Cliente do backend e normalização de erros
 │   ├── utils/
 │   │   ├── imagePipeline.js       # Recorte, alinhamento, grade e GIF (Canvas)
-│   │   └── presets.js             # Presets Walk/Run/Attack desenhados no navegador
+│   │   └── presets.js             # Presets guardados (Walk/Run/Attack) para uso futuro
 │   ├── index.css         # Tailwind + tema base + xadrez de transparência
 │   └── main.jsx
 ├── tests/
@@ -196,10 +196,10 @@ Resposta:
 - **Geração do zero** (`correction_prompt` ausente): as `reference_images` são
   usadas como referência de pose/movimento. `frame_count` informa quantos frames
   a saída deve ter (o total detectado na grade da referência, ex.: 16) e
-  `grid_columns`/`grid_rows` definem o formato da grade de saída (ex.: 4×4). A
-  referência é enviada inteira e a IA deve desenhar o mesmo número de frames, na
-  mesma ordem. O resultado é uma spritesheet; a divisão em frames acontece só no
-  frontend — e usa a grade real detectada na imagem devolvida.
+  `grid_columns`/`grid_rows` usam essa mesma grade (ex.: 4×4). A referência é
+  enviada inteira e a IA deve desenhar o mesmo número de frames, na mesma ordem.
+  O resultado é uma spritesheet; a divisão em frames acontece só no frontend,
+  com os mesmos campos Colunas/Linhas aplicados à referência e ao resultado.
 - **Correção** (`correction_prompt` presente): as `previous_generated_images`
   são a fonte de verdade visual. Se `target_frame_index` for informado, apenas
   aquele frame é corrigido (índice começa em `0`); caso contrário, a correção é
@@ -267,13 +267,13 @@ duas colunas em tablets):
 ### Coluna esquerda — configuração
 - **BYOK:** provedor, chave (com botão `Validar`), lista dinâmica de modelos e
   link `Obter chave` para o console de cada provedor.
-- **Referência de movimento:** presets `Idle`, `Walk`, `Jump` e `Attack` ou drag
-  & drop de PNG/spritesheet. O app **detecta a grade real da imagem** pelos
-  pixels (transparência ou cor de fundo) e mostra os campos **Colunas/Linhas**
-  da referência, com botão **detectar** para rodar de novo. É essa grade que
-  define quantos frames a IA deve gerar — o painel central só recorta o
-  resultado. Ex.: uma spritesheet 4×4 gera 16 frames mesmo que o painel esteja
-  exibindo 4 colunas.
+- **Referência de movimento:** drag & drop de PNG/spritesheet. O app **detecta
+  a grade real da imagem** pelos pixels (transparência ou cor de fundo) e usa
+  esse total para definir quantos frames a IA deve gerar. A grade **Colunas/
+  Linhas** fica só no painel central e recorta **tanto a referência antiga
+  quanto o resultado novo**. Ex.: uma spritesheet 4×4 gera 16 frames.
+- **Presets rápidos:** removidos da interface; o gerador procedural continua
+  guardado em `src/utils/presets.js` para uso futuro.
 - **Prompt:** aparência do personagem e estilo de arte.
 - **`[ GERAR NOVO SPRITESHEET ]`** limpa o histórico e gera tudo do zero,
   enviando a referência inteira e o número real de frames para a IA.
