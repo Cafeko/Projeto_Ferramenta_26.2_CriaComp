@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Film,
   Image as ImageIcon,
-  Loader2,
   Palette,
+  RefreshCw,
   Sparkles,
   Upload,
   User,
@@ -12,7 +12,7 @@ import {
 
 import { formatElapsed } from '../../lib/api'
 import { PRESET_OPTIONS, createPresetSheet } from '../../utils/presets'
-import { Alert, Card, Field, PrimaryButton, inputClass, labelClass } from './ui'
+import { Card, Field, PrimaryButton, inputClass, labelClass } from './ui'
 
 /**
  * Coluna esquerda: referência de movimento, prompts e botão de geração.

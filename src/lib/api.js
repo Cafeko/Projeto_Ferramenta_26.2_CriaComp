@@ -158,6 +158,9 @@ export async function listModels({ provider, apiKey }) {
  *   referenceImages: string[],
  *   characterAppearance: string,
  *   artStyle: string,
+ *   frameCount?: number | null,
+ *   gridColumns?: number | null,
+ *   gridRows?: number | null,
  *   previousImages?: string[],
  *   correctionPrompt?: string | null,
  *   targetFrameIndex?: number | null,
@@ -170,6 +173,9 @@ export async function generateSprites({
   referenceImages,
   characterAppearance,
   artStyle,
+  frameCount = null,
+  gridColumns = null,
+  gridRows = null,
   previousImages = [],
   correctionPrompt = null,
   targetFrameIndex = null,
@@ -184,6 +190,15 @@ export async function generateSprites({
     art_style: artStyle,
   }
 
+  if (Number.isInteger(frameCount) && frameCount > 0) {
+    payload.frame_count = frameCount
+  }
+  if (Number.isInteger(gridColumns) && gridColumns > 0) {
+    payload.grid_columns = gridColumns
+  }
+  if (Number.isInteger(gridRows) && gridRows > 0) {
+    payload.grid_rows = gridRows
+  }
   if (previousImages.length > 0) {
     payload.previous_generated_images = previousImages
   }

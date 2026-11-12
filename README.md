@@ -184,6 +184,9 @@ Resposta:
   "reference_images": ["<base64 ou data URL>"],
   "character_appearance": "Cavaleira de armadura azul, cabelo curto...",
   "art_style": "Pixel art 16-bit, paleta limitada, contorno grosso",
+  "frame_count": 16,
+  "grid_columns": 4,
+  "grid_rows": 4,
   "previous_generated_images": [],
   "correction_prompt": null,
   "target_frame_index": null
@@ -191,8 +194,11 @@ Resposta:
 ```
 
 - **Geração do zero** (`correction_prompt` ausente): as `reference_images` são
-  usadas como referência de pose/movimento. Com mais de um frame, o prompt pede
-  uma spritesheet horizontal na mesma ordem das referências.
+  usadas como referência de pose/movimento. `frame_count` informa quantos frames
+  a saída deve ter (normalmente `colunas × linhas` da grade da referência); a
+  referência pode ser uma única spritesheet — ela é enviada inteira e a IA deve
+  desenhar o mesmo número de frames. O resultado é uma spritesheet horizontal;
+  a divisão em frames acontece só no frontend.
 - **Correção** (`correction_prompt` presente): as `previous_generated_images`
   são a fonte de verdade visual. Se `target_frame_index` for informado, apenas
   aquele frame é corrigido (índice começa em `0`); caso contrário, a correção é
@@ -321,9 +327,9 @@ await exportGIF(aligned, 8)
 - **`compileSpritesheetGrid(base64Frames, columns)`** — compila os frames em
   uma grade única, com células do tamanho do maior frame e fundo transparente.
 - **`exportGIF(base64Frames, fps, options)`** — normaliza os frames para o
-  mesmo canvas, calcula uma paleta global com transparência de 1 bit (via
-  `gifenc`) e dispara o download (ou devolve o `Blob` com
-  `{ download: false }`).
+  mesmo canvas, calcula uma paleta global com transparência de 1 bit (encoder
+  GIF próprio em JS, sem dependência externa) e dispara o download (ou devolve
+  o `Blob` com `{ download: false }`).
 
 Os testes de navegador ficam em `tests/image-pipeline.html`: com `npm run dev`,
 abra `http://localhost:5173/tests/image-pipeline.html` (22 verificações de

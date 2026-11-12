@@ -115,6 +115,28 @@ function readImageFile(file) {
   })
 }
 
+/**
+ * Monta o objeto de referência de um preset (Data URL + dimensões).
+ * Retorna `null` se o Canvas não estiver disponível.
+ *
+ * @param {string} id
+ */
+function createPresetReference(id) {
+  const preset = PRESETS[id]
+  if (!preset) return null
+  try {
+    return {
+      dataUrl: createPresetSheet(id),
+      width: 32 * preset.frames.length,
+      height: 32,
+      name: `${preset.label.toLowerCase()}-preset.png`,
+      kind: 'preset',
+    }
+  } catch {
+    return null
+  }
+}
+
 /** @typedef {string | Blob | File | HTMLImageElement | HTMLCanvasElement | ImageBitmap} ImageSource */
 
 const TOAST_STYLES = {
@@ -182,7 +204,7 @@ export default function MainDashboard() {
 
   /* --------------------------- Referência ------------------------------- */
   const [presetId, setPresetId] = useState('walk')
-  const [reference, setReference] = useState(null)
+  const [reference, setReference] = useState(() => createPresetReference('walk'))
   const [columns, setColumns] = useState('4')
   const [rows, setRows] = useState('1')
   const [autoSlice, setAutoSlice] = useState(true)
@@ -195,7 +217,12 @@ export default function MainDashboard() {
   const [artStyle, setArtStyle] = useState(DEFAULT_ART_STYLE)
 
   /* --------------------------- Geração ---------------------------------- */
+  // Spritesheets brutos devolvidos pela IA (sem fatiar). Ficam guardados para
+  // recalcular os frames quando o usuário muda Colunas/Linhas, sem precisar
+  // gerar novamente e sem apagar o resultado.
+  const [generatedSheets, setGeneratedSheets] = useState([])
   const [frames, setFrames] = useState([])
+  const [slicingResult, setSlicingResult] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [generationError, setGenerationError] = useState('')
 
@@ -226,7 +253,6 @@ export default function MainDashboard() {
   const [elapsed, setElapsed] = useState(0)
   const [toasts, setToasts] = useState([])
   const toastId = useRef(0)
-  const initialized = useRef(false)
 
   const pushToast = useCallback((message, tone = 'info') => {
     const id = toastId.current + 1
@@ -246,32 +272,20 @@ export default function MainDashboard() {
     (id) => {
       const preset = PRESETS[id]
       if (!preset) return
-      try {
-        const sheet = createPresetSheet(id)
-        setPresetId(id)
-        setReference({
-          dataUrl: sheet,
-          width: 32 * preset.frames.length,
-          height: 32,
-          name: `${preset.label.toLowerCase()}-preset.png`,
-          kind: 'preset',
-        })
-        setColumns(String(preset.frames.length))
-        setRows('1')
-        setAutoSlice(true)
-        setReferenceError('')
-      } catch (error) {
-        pushToast(describeApiError(error), 'error')
+      const next = createPresetReference(id)
+      if (!next) {
+        pushToast('Não foi possível gerar o preset neste navegador.', 'error')
+        return
       }
+      setPresetId(id)
+      setReference(next)
+      setColumns(String(preset.frames.length))
+      setRows('1')
+      setAutoSlice(true)
+      setReferenceError('')
     },
     [pushToast],
   )
-
-  useEffect(() => {
-    if (initialized.current) return
-    initialized.current = true
-    selectPreset('walk')
-  }, [selectPreset])
 
   /* ------------------ Fatiamento da referência -------------------------- */
   useEffect(() => {
@@ -325,6 +339,55 @@ export default function MainDashboard() {
     }
   }, [reference, autoSlice, columns, rows])
 
+  /* ------------------ Fatiamento do resultado gerado --------------------- */
+  // O spritesheet devolvido pela IA é guardado inteiro. Sempre que a grade
+  // (colunas/linhas) mudar, os frames são recalculados a partir dele — a
+  // imagem nunca é apagada só por ajustar a grade.
+  useEffect(() => {
+    let cancelled = false
+
+    if (generatedSheets.length === 0) {
+      setFrames([])
+      setSlicingResult(false)
+      return undefined
+    }
+
+    const gridColumns = Math.max(1, Number.parseInt(columns, 10) || 1)
+    const gridRows = Math.max(1, Number.parseInt(rows, 10) || 1)
+    const isSingleImage = gridColumns === 1 && gridRows === 1
+    const shouldSlice =
+      autoSlice && generatedSheets.length === 1 && !isSingleImage
+
+    if (!shouldSlice) {
+      setFrames(generatedSheets)
+      setSlicingResult(false)
+      return undefined
+    }
+
+    setSlicingResult(true)
+    ;(async () => {
+      try {
+        const sliced = await sliceSpritesheet(
+          generatedSheets[0],
+          gridColumns,
+          gridRows,
+        )
+        if (cancelled) return
+        setFrames(sliced.length > 0 ? sliced : generatedSheets)
+      } catch (error) {
+        if (cancelled) return
+        console.error('[slice-result]', error)
+        setFrames(generatedSheets)
+      } finally {
+        if (!cancelled) setSlicingResult(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [generatedSheets, autoSlice, columns, rows])
+
   /* --------------------------- Playback --------------------------------- */
   useEffect(() => {
     if (viewMode !== 'loop') return undefined
@@ -342,6 +405,7 @@ export default function MainDashboard() {
     if (frames.length === 0) return
     // Qualquer alteração nos inputs de configuração invalida a geração anterior,
     // forçando o usuário a regenerar do zero com os novos parâmetros.
+    setGeneratedSheets([])
     setFrames([])
     setCorrectionFrame(null)
     setCorrectionPrompt('')
@@ -472,6 +536,16 @@ export default function MainDashboard() {
       // Não fatiamos no frontend antes de enviar: a divisão em grid acontece
       // apenas no frontend para exibição nos frames lado a lado e filmstrip.
       const referenceImage = reference?.dataUrl ? [reference.dataUrl] : []
+
+      // Quantidade de frames que a IA deve desenhar. Vem da grade configurada
+      // (referência já fatiada localmente), para a IA não gerar 1 frame só.
+      const gridColumns = Math.max(1, Number.parseInt(columns, 10) || 1)
+      const gridRows = Math.max(1, Number.parseInt(rows, 10) || 1)
+      const requestedFrameCount = autoSlice
+        ? Math.max(1, Math.min(64, gridColumns * gridRows))
+        : Math.max(1, Math.min(64, referenceFrames.length))
+      const layoutMatches = gridColumns * gridRows === requestedFrameCount
+
       try {
         ensurePayloadSize(referenceImage)
       } catch (error) {
@@ -483,6 +557,7 @@ export default function MainDashboard() {
       setGenerating(true)
       setGenerationError('')
       setCorrectionError('')
+      setGeneratedSheets([])
       setFrames([])
       setCorrectionFrame(null)
       setCorrectionPrompt('')
@@ -498,6 +573,9 @@ export default function MainDashboard() {
           referenceImages: referenceImage,
           characterAppearance: appearance.trim(),
           artStyle: artStyle.trim(),
+          frameCount: requestedFrameCount,
+          gridColumns: layoutMatches ? gridColumns : requestedFrameCount,
+          gridRows: layoutMatches ? gridRows : 1,
         })
       } catch (apiError) {
         const message = describeApiError(apiError)
@@ -527,37 +605,12 @@ export default function MainDashboard() {
         return
       }
 
-      // Se a IA devolveu um único sprite sheet (várias poses em uma imagem),
-      // fatia LOCALMENTE no frontend apenas para exibição nos frames lado a lado
-      // e filmstrip. Não afeta o que foi gerado pela IA.
-      let finalFrames = result.images
-      const gridCols = Math.max(1, Number.parseInt(columns, 10) || 1)
-      const gridRows = Math.max(1, Number.parseInt(rows, 10) || 1)
-      const isSingleImage = gridCols === 1 && gridRows === 1
-
-      if (result.images.length === 1 && autoSlice && !isSingleImage) {
-        try {
-          const sliced = await sliceSpritesheet(result.images[0], gridCols, gridRows)
-          if (Array.isArray(sliced) && sliced.length > 0) {
-            finalFrames = sliced
-          }
-        } catch (sliceError) {
-          pushToast(
-            'Não foi possível fatiar automaticamente o sprite sheet. Use os campos Colunas/Linhas e gere novamente.',
-            'warning',
-          )
-          console.error('[slice-spritesheet]', sliceError)
-        }
-      } else if (result.images.length === 1 && isSingleImage) {
-        // Imagem única sem grade: usa como um único frame.
-        finalFrames = result.images
-      }
-
-      const safeFrames = Array.isArray(finalFrames) ? finalFrames : []
-      setFrames(safeFrames)
-      setExportColumns(String(Math.min(4, safeFrames.length)))
+      // Guarda o spritesheet inteiro. O efeito de fatiamento acima recalcula
+      // os frames sempre que a grade mudar, sem precisar gerar de novo.
+      setGeneratedSheets(result.images)
+      setExportColumns(String(Math.min(4, requestedFrameCount)))
       pushToast(
-        `${safeFrames.length} frame${safeFrames.length === 1 ? '' : 's'} gerado${safeFrames.length === 1 ? '' : 's'} com sucesso.`,
+        `Spritesheet recebido com ${requestedFrameCount} frame${requestedFrameCount === 1 ? '' : 's'} esperado${requestedFrameCount === 1 ? '' : 's'}.`,
         'success',
       )
     } catch (error) {
@@ -925,7 +978,7 @@ export default function MainDashboard() {
             appearance={appearance}
             onAppearanceChange={setAppearance}
             artStyle={artStyle}
-            onArtStyleChange={onArtStyleChange}
+            onArtStyleChange={setArtStyle}
             onGenerate={handleGenerate}
             generating={generating}
             elapsed={elapsed}
@@ -949,6 +1002,7 @@ export default function MainDashboard() {
             generationError={generationError}
             onEditFrame={handleEditFrame}
             editingFrame={modalOpen ? modalFrameIndex : null}
+            slicing={slicingResult}
             columns={columns}
             rows={rows}
             autoSlice={autoSlice}

@@ -147,6 +147,13 @@ class GenerateRequest(_ProviderRequest):
     )
     correction_prompt: str | None = Field(default=None, max_length=6000)
     target_frame_index: int | None = Field(default=None, ge=0)
+    # Quantidade de frames que a saída deve conter. O frontend envia o total de
+    # células da grade da referência (ex.: 16) para a IA não gerar 1 frame só.
+    frame_count: int | None = Field(default=None, ge=1, le=64)
+    # Formato da grade usada no recorte local (ex.: 4 colunas × 4 linhas). A IA
+    # deve organizar a spritesheet no mesmo formato para o recorte bater.
+    grid_columns: int | None = Field(default=None, ge=1, le=64)
+    grid_rows: int | None = Field(default=None, ge=1, le=64)
 
     @field_validator("model_id")
     @classmethod
@@ -224,6 +231,7 @@ class PromptPlan:
     body: str
     visuals: tuple[VisualInput, ...]
     target_frame_index: int | None
+    frame_count_override: int | None = None
 
     @property
     def prompt(self) -> str:
@@ -234,6 +242,8 @@ class PromptPlan:
     @property
     def frame_count(self) -> int:
         """Quantidade de frames esperada na saída deste plano."""
+        if self.frame_count_override is not None:
+            return self.frame_count_override
         if self.mode == "generation":
             return sum(1 for visual in self.visuals if visual.role == "pose") or 1
         if self.target_frame_index is not None:
@@ -682,29 +692,66 @@ def _generation_body(request: GenerateRequest, frame_count: int) -> str:
         "palette, flat shading and no anti-aliasing."
     )
 
+    single_sheet = len(request.reference_images) == 1
+    grid_columns = request.grid_columns or (frame_count if frame_count > 0 else 1)
+    grid_rows = request.grid_rows or 1
+    if grid_columns * grid_rows != frame_count:
+        # Grade inconsistente com a contagem: cai para uma linha única.
+        grid_columns = frame_count
+        grid_rows = 1
+    grid_layout = (
+        "side by side in a single row"
+        if grid_rows == 1
+        else f"arranged in a {grid_columns} columns × {grid_rows} rows grid"
+    )
+    cell_order = "left-to-right (and top-to-bottom when there are multiple rows)"
+
     if frame_count > 1:
+        if single_sheet:
+            layout_rule = (
+                "The POSE REFERENCE is a SINGLE sprite sheet image. It contains "
+                f"EXACTLY {frame_count} frames (animation cells) arranged in a grid. "
+                f"Read the cells in order: {cell_order}. "
+                "Do not treat the whole sheet as one single pose."
+            )
+        else:
+            layout_rule = (
+                f"There are {frame_count} POSE REFERENCE images, one per frame, "
+                "in the same order as the output frames."
+            )
         output_rule = (
-            f"OUTPUT FORMAT: one single horizontal sprite sheet containing exactly "
-            f"{frame_count} frames, in the same left-to-right order as the pose "
-            "references, evenly spaced with no gaps, no borders, no labels and no "
-            "extra panels. Every frame must use the same canvas size, character "
-            "scale, ground line and palette.\n"
-            "CRITICAL: Each frame in the sprite sheet must show a DIFFERENT phase "
-            "of the motion. Frame 1 = reference pose 1, frame 2 = reference pose 2, "
-            "etc. Do NOT repeat the same pose in multiple frames. Do NOT add extra "
-            "frames beyond the reference count."
+            f"OUTPUT FORMAT - CRITICAL:\n"
+            f"- Return ONE single sprite sheet with EXACTLY {frame_count} frames, "
+            f"{grid_layout}, in reading order: {cell_order}.\n"
+            f"- The sheet MUST contain exactly {frame_count} different frames: not "
+            f"one, not fewer, not more.\n"
+            "- Every frame must show the SAME character in the pose of the "
+            "corresponding reference frame.\n"
+            "- Frame N of the output = frame N of the reference (same pose, same "
+            "limb positions, same timing phase).\n"
+            "- Never repeat the same pose across frames. Never merge two reference "
+            "poses into one frame.\n"
+            "- Frames must be evenly spaced, with the same canvas size and scale, "
+            "no gaps, no borders, no labels and no extra panels."
         )
     else:
+        layout_rule = (
+            "The POSE REFERENCE shows a single pose. The output must be a single "
+            "frame with that same pose."
+        )
         output_rule = (
             "OUTPUT FORMAT: exactly one single sprite frame, centered, with no "
             "sprite sheet, no border and no extra panels."
         )
 
-    if frame_count:
+    if request.reference_images:
         task = (
             "TASK: Generate a new 2D game sprite animation by transferring ONLY the "
-            "MOTION from the POSE REFERENCE images onto the CHARACTER APPEARANCE "
-            "described below.\n"
+            "MOTION from the POSE REFERENCE onto the CHARACTER APPEARANCE described "
+            "below.\n"
+            f"{layout_rule}\n"
+            f"You must produce EXACTLY {frame_count} output frame(s), one equivalent "
+            "frame for each reference frame, in the same order.\n"
             "ROLE SEPARATION (read carefully):\n"
             "1) POSE REFERENCE = motion/pose/silhouette/camera angle ONLY. It tells "
             "   HOW the character moves and from which angle it is viewed. It does "
@@ -749,9 +796,10 @@ ROLE RULES (strict):
   black and white, the final image MUST be black and white. If the style limits
   the palette, obey the limit even if the appearance description asks for more
   colors.
-- FRAME COUNT: You must output EXACTLY {frame_count} frame(s) in the sprite sheet.
-  Count the cells in the reference sprite sheet grid and match that count exactly.
-  Do not generate fewer or more frames than the reference grid contains.
+- FRAME COUNT: output EXACTLY {frame_count} frame(s) in the sprite sheet.
+  When {frame_count} is greater than 1, the result MUST be a sprite sheet with
+  {frame_count} frames; returning a single frame is wrong. Count the cells of
+  the reference sheet and match that count exactly.
 - Merge the three inputs into one coherent result: correct motion from the
   references, correct look from the appearance, correct rendering from the art
   style.
@@ -930,16 +978,26 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
         )
 
     for index, image in enumerate(pose_images):
-        label = f"POSE REFERENCE frame {index + 1} of {len(pose_images)}"
+        if len(pose_images) == 1:
+            label = (
+                "POSE REFERENCE sprite sheet (source of poses only; do not copy "
+                "its character design or art style)"
+            )
+        else:
+            label = f"POSE REFERENCE frame {index + 1} of {len(pose_images)}"
         visuals.append(VisualInput(label=label, role="pose", image=image))
 
-    body = _generation_body(request, len(pose_images))
+    # O frontend informa quantas células a grade da referência tem. Sem esse
+    # campo (clientes antigos), assume 1 frame por imagem enviada.
+    requested_frames = request.frame_count or len(pose_images) or 1
+    body = _generation_body(request, requested_frames)
     return PromptPlan(
         mode="generation",
         order_text=_order_text(visuals),
         body=body,
         visuals=tuple(visuals),
         target_frame_index=None,
+        frame_count_override=requested_frames,
     )
 
 

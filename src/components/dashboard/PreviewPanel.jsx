@@ -1,23 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ChevronLeft,
   ChevronRight,
   Film,
   Grid3X3,
-  Image as ImageIcon,
   ImageOff,
   LayoutGrid,
   Loader2,
   Maximize2 as Maximize,
   RefreshCw,
-  Scan,
   Square,
-  Upload,
 } from 'lucide-react'
 
-import { sliceSpritesheet } from '../../utils/imagePipeline'
-import { formatElapsed } from '../../lib/api'
-import { Alert, Card, Field, Pill, inputClass, labelClass } from './ui'
+import { Alert, Card, Pill, inputClass, labelClass } from './ui'
 
 /**
  * Um dos lados do player (referência ou resultado) para UM frame.
@@ -100,6 +94,7 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
  *   generationError: string,
  *   onEditFrame: (index: number) => void,
  *   editingFrame: number | null,
+ *   slicing: boolean,
  *   columns: string,
  *   rows: string,
  *   autoSlice: boolean,
@@ -122,6 +117,7 @@ export default function PreviewPanel({
   generationError,
   onEditFrame,
   editingFrame,
+  slicing,
   columns,
   rows,
   autoSlice,
@@ -137,54 +133,9 @@ export default function PreviewPanel({
   const hasFrames = gens.length > 0
   const hasReference = refs.length > 0
 
-  // Estado para os frames após slicing (grid aplicado)
-  const [slicedFrames, setSlicedFrames] = useState([])
-  const [slicing, setSlicing] = useState(false)
-
-  // Recalcular slicing quando mudar colunas/linhas/autoSlice ou frames
-  useEffect(() => {
-    if (!autoSlice || gens.length === 0) {
-      setSlicedFrames(gens)
-      return
-    }
-
-    const cols = Math.max(1, Number.parseInt(columns, 10) || 1)
-    const rows = Math.max(1, Number.parseInt(rows, 10) || 1)
-    const isSingleImage = cols === 1 && rows === 1
-
-    if (isSingleImage) {
-      setSlicedFrames(gens)
-      return
-    }
-
-    setSlicing(true)
-    ;(async () => {
-      try {
-        // Se há um único frame (spritesheet inteiro), fatiar em grid
-        if (gens.length === 1) {
-          const sliced = await sliceSpritesheet(gens[0], cols, rows)
-          if (sliced.length > 0) {
-            setSlicedFrames(sliced)
-            return
-          }
-        }
-        // Se já há múltiplos frames, manter como está
-        setSlicedFrames(gens)
-      } catch (error) {
-        console.error('[slice-spritesheet]', error)
-        setSlicedFrames(gens)
-      } finally {
-        setSlicing(false)
-      }
-    })()
-  }, [gens, columns, rows, autoSlice])
-
-  const displayFrames = slicedFrames.length > 0 ? slicedFrames : gens
-  const displayTotal = Math.max(refs.length, displayFrames.length)
-
-  if (totalFrames > 0 && (currentFrameIndex == null || currentFrameIndex < 0 || currentFrameIndex >= totalFrames)) {
-    // Índice fora do range, corrigir silenciosamente
-  }
+  // Os frames já chegam fatiados do MainDashboard. A grade é recalculada lá
+  // a partir do spritesheet bruto, então trocar colunas/linhas não apaga nada.
+  const displayFrames = gens
 
   return (
     <div className="space-y-4">
