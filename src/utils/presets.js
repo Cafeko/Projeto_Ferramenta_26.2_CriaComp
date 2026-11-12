@@ -1,163 +1,241 @@
 /**
- * Presets de referência de movimento.
+ * Presets de referência de movimento — desenhados com pixel art nítida.
  *
- * Em vez de depender de arquivos binários, desenhamos pequenas "pose sheets"
- * de 32x32 px no próprio navegador. Elas servem como referência de pose para
- * os modelos de imagem (silhuetas/stick figures), no espírito do OpenPose.
+ * Em vez de stick figures finas, cada preset desenha um personagem pequeno
+ * (~20x24 px dentro da célula 32x32) com contorno escuro, corpo, cabeça,
+ * membros e (no ataque) uma arma. Tudo é gerado proceduralmente no Canvas,
+ * sem depender de arquivos binários.
  *
  * Cada preset tem 4 frames em uma única linha (4 colunas × 1 linha).
  */
 
-const BODY = '#7dd3fc'
-const BODY_DARK = '#0b1220'
-const SWORD = '#fbbf24'
-const SWORD_DARK = '#3a2404'
+const PX = '#070a0f'      // contorno / fundo escuro
+const SKIN = '#f5cac3'    // pele
+const SKIN_D = '#e3a893'  // pele sombra
+const HAIR = '#8b4a1a'    // cabelo castanho
+const CLOTH = '#2c3e50'   // roupa escura
+const CLOTH_L = '#5d6d7e' // roupa claro
+const BOOT = '#4a231a'    // bota
+const SWORD = '#fbbf24'   // espada
+const SWORD_D = '#b7791f' // espada sombra
 
-/** @typedef {{ x1: number, y1: number, x2: number, y2: number, width?: number }} Segment */
-/** @typedef {{ head: [number, number], segments: Segment[], sword?: Segment }} PoseFrame */
-
-/** @param {number} x1 @param {number} y1 @param {number} x2 @param {number} y2 @param {number} [width] @returns {Segment} */
-const line = (x1, y1, x2, y2, width = 2) => ({ x1, y1, x2, y2, width })
-
-/** @type {Record<string, { label: string, frames: PoseFrame[] }>} */
+/** @type {Record<string, { label: string, frames: Array<Array<{x:number,y:number,w:number,h:number,c:string}>> }>} */
 export const PRESETS = {
   walk: {
     label: 'Walk',
     frames: [
-      {
-        head: [16, 6],
-        segments: [
-          line(16, 9, 16, 18, 4),
-          line(16, 11, 12, 15),
-          line(16, 11, 20, 15),
-          line(16, 18, 11, 29),
-          line(16, 18, 21, 29),
-        ],
-      },
-      {
-        head: [16, 6],
-        segments: [
-          line(16, 9, 16, 18, 4),
-          line(16, 11, 14, 16),
-          line(16, 11, 18, 16),
-          line(16, 18, 15, 29),
-          line(16, 18, 18, 28),
-        ],
-      },
-      {
-        head: [16, 6],
-        segments: [
-          line(16, 9, 16, 18, 4),
-          line(16, 11, 20, 15),
-          line(16, 11, 12, 15),
-          line(16, 18, 21, 29),
-          line(16, 18, 11, 29),
-        ],
-      },
-      {
-        head: [16, 6],
-        segments: [
-          line(16, 9, 16, 18, 4),
-          line(16, 11, 18, 16),
-          line(16, 11, 14, 16),
-          line(16, 18, 18, 28),
-          line(16, 18, 15, 29),
-        ],
-      },
+      // Frame 1: pé esquerdo para frente
+      [
+        { x: 12, y: 4, w: 8, h: 6, c: HAIR },   // cabelo
+        { x: 13, y: 6, w: 2, h: 2, c: SKIN },   // rosto esquerdo
+        { x: 15, y: 6, w: 2, h: 2, c: SKIN },   // rosto direito
+        { x: 13, y: 10, w: 2, h: 1, c: PX },    // olho esquerdo
+        { x: 15, y: 10, w: 2, h: 1, c: PX },    // olho direito
+        { x: 12, y: 10, w: 8, h: 4, c: CLOTH }, // tronco
+        { x: 11, y: 14, w: 1, h: 4, c: SKIN },  // braço esquerdo
+        { x: 20, y: 14, w: 1, h: 4, c: SKIN },  // braço direito
+        { x: 12, y: 14, w: 8, h: 4, c: CLOTH_L },// cinto/quadril
+        { x: 10, y: 18, w: 3, h: 6, c: BOOT },  // perna esquerda (para frente)
+        { x: 19, y: 20, w: 3, h: 4, c: BOOT },  // perna direita (para trás)
+        { x: 9, y: 24, w: 4, h: 2, c: BOOT },   // pé esquerdo
+        { x: 19, y: 24, w: 4, h: 2, c: BOOT },  // pé direito
+      ],
+      // Frame 2: pernas cruzadas no meio
+      [
+        { x: 12, y: 4, w: 8, h: 6, c: HAIR },
+        { x: 13, y: 6, w: 2, h: 2, c: SKIN },
+        { x: 15, y: 6, w: 2, h: 2, c: SKIN },
+        { x: 13, y: 10, w: 2, h: 1, c: PX },
+        { x: 15, y: 10, w: 2, h: 1, c: PX },
+        { x: 12, y: 10, w: 8, h: 4, c: CLOTH },
+        { x: 11, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 20, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 12, y: 14, w: 8, h: 4, c: CLOTH_L },
+        { x: 11, y: 18, w: 3, h: 6, c: BOOT },
+        { x: 16, y: 18, w: 3, h: 6, c: BOOT },
+        { x: 10, y: 24, w: 4, h: 2, c: BOOT },
+        { x: 16, y: 24, w: 4, h: 2, c: BOOT },
+      ],
+      // Frame 3: pé direito para frente
+      [
+        { x: 12, y: 4, w: 8, h: 6, c: HAIR },
+        { x: 13, y: 6, w: 2, h: 2, c: SKIN },
+        { x: 15, y: 6, w: 2, h: 2, c: SKIN },
+        { x: 13, y: 10, w: 2, h: 1, c: PX },
+        { x: 15, y: 10, w: 2, h: 1, c: PX },
+        { x: 12, y: 10, w: 8, h: 4, c: CLOTH },
+        { x: 11, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 20, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 12, y: 14, w: 8, h: 4, c: CLOTH_L },
+        { x: 19, y: 18, w: 3, h: 6, c: BOOT },
+        { x: 10, y: 20, w: 3, h: 4, c: BOOT },
+        { x: 19, y: 24, w: 4, h: 2, c: BOOT },
+        { x: 9, y: 24, w: 4, h: 2, c: BOOT },
+      ],
+      // Frame 4: volta ao centro
+      [
+        { x: 12, y: 4, w: 8, h: 6, c: HAIR },
+        { x: 13, y: 6, w: 2, h: 2, c: SKIN },
+        { x: 15, y: 6, w: 2, h: 2, c: SKIN },
+        { x: 13, y: 10, w: 2, h: 1, c: PX },
+        { x: 15, y: 10, w: 2, h: 1, c: PX },
+        { x: 12, y: 10, w: 8, h: 4, c: CLOTH },
+        { x: 11, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 20, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 12, y: 14, w: 8, h: 4, c: CLOTH_L },
+        { x: 11, y: 18, w: 3, h: 6, c: BOOT },
+        { x: 16, y: 18, w: 3, h: 6, c: BOOT },
+        { x: 10, y: 24, w: 4, h: 2, c: BOOT },
+        { x: 16, y: 24, w: 4, h: 2, c: BOOT },
+      ],
     ],
   },
   run: {
     label: 'Run',
     frames: [
-      {
-        head: [17, 6],
-        segments: [
-          line(17, 9, 15, 17, 4),
-          line(16, 11, 20, 14),
-          line(16, 11, 12, 13),
-          line(15, 17, 9, 26),
-          line(15, 17, 22, 29),
-        ],
-      },
-      {
-        head: [17, 6],
-        segments: [
-          line(17, 9, 15, 17, 4),
-          line(16, 11, 19, 9),
-          line(16, 11, 13, 15),
-          line(15, 17, 12, 23),
-          line(15, 17, 19, 24),
-        ],
-      },
-      {
-        head: [17, 6],
-        segments: [
-          line(17, 9, 15, 17, 4),
-          line(16, 11, 22, 12),
-          line(16, 11, 11, 15),
-          line(15, 17, 21, 26),
-          line(15, 17, 10, 29),
-        ],
-      },
-      {
-        head: [17, 6],
-        segments: [
-          line(17, 9, 15, 17, 4),
-          line(16, 11, 18, 15),
-          line(16, 11, 12, 10),
-          line(15, 17, 13, 24),
-          line(15, 17, 20, 22),
-        ],
-      },
+      // Frame 1: impulso inicial
+      [
+        { x: 11, y: 2, w: 10, h: 7, c: HAIR },  // cabelo para trás
+        { x: 13, y: 5, w: 2, h: 2, c: SKIN },
+        { x: 15, y: 5, w: 2, h: 2, c: SKIN },
+        { x: 13, y: 9, w: 2, h: 1, c: PX },
+        { x: 15, y: 9, w: 2, h: 1, c: PX },
+        { x: 11, y: 10, w: 10, h: 4, c: CLOTH },
+        { x: 10, y: 14, w: 2, h: 4, c: SKIN },  // braço esquerdo para trás
+        { x: 20, y: 14, w: 2, h: 4, c: SKIN },  // braço direito para frente
+        { x: 11, y: 14, w: 10, h: 4, c: CLOTH_L },
+        { x: 10, y: 18, w: 3, h: 6, c: BOOT },  // perna esquerda para trás
+        { x: 17, y: 16, w: 3, h: 6, c: BOOT },  // perna direita para frente
+        { x: 9, y: 24, w: 4, h: 2, c: BOOT },
+        { x: 17, y: 24, w: 4, h: 2, c: BOOT },
+      ],
+      // Frame 2: meio do passo
+      [
+        { x: 12, y: 2, w: 8, h: 6, c: HAIR },
+        { x: 13, y: 5, w: 2, h: 2, c: SKIN },
+        { x: 15, y: 5, w: 2, h: 2, c: SKIN },
+        { x: 13, y: 9, w: 2, h: 1, c: PX },
+        { x: 15, y: 9, w: 2, h: 1, c: PX },
+        { x: 12, y: 10, w: 8, h: 4, c: CLOTH },
+        { x: 11, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 20, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 12, y: 14, w: 8, h: 4, c: CLOTH_L },
+        { x: 11, y: 18, w: 3, h: 6, c: BOOT },
+        { x: 16, y: 18, w: 3, h: 6, c: BOOT },
+        { x: 10, y: 24, w: 4, h: 2, c: BOOT },
+        { x: 16, y: 24, w: 4, h: 2, c: BOOT },
+      ],
+      // Frame 3: pouso
+      [
+        { x: 11, y: 3, w: 10, h: 6, c: HAIR },
+        { x: 13, y: 6, w: 2, h: 2, c: SKIN },
+        { x: 15, y: 6, w: 2, h: 2, c: SKIN },
+        { x: 13, y: 10, w: 2, h: 1, c: PX },
+        { x: 15, y: 10, w: 2, h: 1, c: PX },
+        { x: 11, y: 11, w: 10, h: 4, c: CLOTH },
+        { x: 10, y: 15, w: 2, h: 4, c: SKIN },
+        { x: 20, y: 15, w: 2, h: 4, c: SKIN },
+        { x: 11, y: 15, w: 10, h: 4, c: CLOTH_L },
+        { x: 10, y: 19, w: 4, h: 5, c: BOOT },
+        { x: 16, y: 19, w: 4, h: 5, c: BOOT },
+        { x: 9, y: 24, w: 5, h: 2, c: BOOT },
+        { x: 16, y: 24, w: 5, h: 2, c: BOOT },
+      ],
+      // Frame 4: próximo impulso
+      [
+        { x: 12, y: 2, w: 8, h: 6, c: HAIR },
+        { x: 13, y: 5, w: 2, h: 2, c: SKIN },
+        { x: 15, y: 5, w: 2, h: 2, c: SKIN },
+        { x: 13, y: 9, w: 2, h: 1, c: PX },
+        { x: 15, y: 9, w: 2, h: 1, c: PX },
+        { x: 12, y: 10, w: 8, h: 4, c: CLOTH },
+        { x: 11, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 20, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 12, y: 14, w: 8, h: 4, c: CLOTH_L },
+        { x: 17, y: 18, w: 3, h: 6, c: BOOT },
+        { x: 10, y: 20, w: 3, h: 4, c: BOOT },
+        { x: 17, y: 24, w: 4, h: 2, c: BOOT },
+        { x: 9, y: 24, w: 4, h: 2, c: BOOT },
+      ],
     ],
   },
   attack: {
     label: 'Attack',
     frames: [
-      {
-        head: [16, 6],
-        segments: [
-          line(16, 9, 16, 18, 4),
-          line(16, 11, 20, 7),
-          line(16, 11, 13, 15),
-          line(16, 18, 12, 29),
-          line(16, 18, 20, 29),
-        ],
-        sword: line(20, 7, 26, 3),
-      },
-      {
-        head: [16, 6],
-        segments: [
-          line(16, 9, 16, 18, 4),
-          line(16, 11, 22, 13),
-          line(16, 11, 12, 16),
-          line(16, 18, 11, 29),
-          line(16, 18, 21, 29),
-        ],
-        sword: line(22, 13, 30, 17),
-      },
-      {
-        head: [16, 6],
-        segments: [
-          line(16, 9, 16, 18, 4),
-          line(16, 11, 20, 17),
-          line(16, 11, 13, 14),
-          line(16, 18, 12, 29),
-          line(16, 18, 20, 29),
-        ],
-        sword: line(20, 17, 27, 22),
-      },
-      {
-        head: [16, 6],
-        segments: [
-          line(16, 9, 16, 18, 4),
-          line(16, 11, 17, 16),
-          line(16, 11, 14, 15),
-          line(16, 18, 12, 29),
-          line(16, 18, 20, 29),
-        ],
-        sword: line(17, 16, 24, 13),
-      },
+      // Frame 1: preparação (espada para trás)
+      [
+        { x: 12, y: 3, w: 8, h: 6, c: HAIR },
+        { x: 13, y: 5, w: 2, h: 2, c: SKIN },
+        { x: 15, y: 5, w: 2, h: 2, c: SKIN },
+        { x: 13, y: 9, w: 2, h: 1, c: PX },
+        { x: 15, y: 9, w: 2, h: 1, c: PX },
+        { x: 12, y: 10, w: 8, h: 4, c: CLOTH },
+        { x: 11, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 20, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 12, y: 14, w: 8, h: 4, c: CLOTH_L },
+        { x: 10, y: 18, w: 3, h: 6, c: BOOT },
+        { x: 17, y: 18, w: 3, h: 6, c: BOOT },
+        { x: 9, y: 24, w: 4, h: 2, c: BOOT },
+        { x: 17, y: 24, w: 4, h: 2, c: BOOT },
+        { x: 21, y: 12, w: 5, h: 2, c: SWORD_D },
+        { x: 21, y: 11, w: 5, h: 2, c: SWORD },
+      ],
+      // Frame 2: golpe (espada no ar)
+      [
+        { x: 12, y: 3, w: 8, h: 6, c: HAIR },
+        { x: 13, y: 5, w: 2, h: 2, c: SKIN },
+        { x: 15, y: 5, w: 2, h: 2, c: SKIN },
+        { x: 13, y: 9, w: 2, h: 1, c: PX },
+        { x: 15, y: 9, w: 2, h: 1, c: PX },
+        { x: 12, y: 10, w: 8, h: 4, c: CLOTH },
+        { x: 11, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 20, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 12, y: 14, w: 8, h: 4, c: CLOTH_L },
+        { x: 10, y: 19, w: 3, h: 5, c: BOOT },
+        { x: 17, y: 19, w: 3, h: 5, c: BOOT },
+        { x: 9, y: 24, w: 4, h: 2, c: BOOT },
+        { x: 17, y: 24, w: 4, h: 2, c: BOOT },
+        { x: 22, y: 8, w: 2, h: 8, c: SWORD_D },
+        { x: 21, y: 7, w: 2, h: 8, c: SWORD },
+        { x: 20, y: 6, w: 2, h: 2, c: SWORD_D },
+        { x: 19, y: 5, w: 2, h: 2, c: SWORD },
+      ],
+      // Frame 3: impacto (espada na frente)
+      [
+        { x: 12, y: 3, w: 8, h: 6, c: HAIR },
+        { x: 13, y: 5, w: 2, h: 2, c: SKIN },
+        { x: 15, y: 5, w: 2, h: 2, c: SKIN },
+        { x: 13, y: 9, w: 2, h: 1, c: PX },
+        { x: 15, y: 9, w: 2, h: 1, c: PX },
+        { x: 12, y: 10, w: 8, h: 4, c: CLOTH },
+        { x: 11, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 20, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 12, y: 14, w: 8, h: 4, c: CLOTH_L },
+        { x: 11, y: 18, w: 3, h: 6, c: BOOT },
+        { x: 16, y: 18, w: 3, h: 6, c: BOOT },
+        { x: 10, y: 24, w: 4, h: 2, c: BOOT },
+        { x: 16, y: 24, w: 4, h: 2, c: BOOT },
+        { x: 13, y: 11, w: 6, h: 2, c: SWORD_D },
+        { x: 12, y: 10, w: 6, h: 2, c: SWORD },
+      ],
+      // Frame 4: retorno (espada recolhendo)
+      [
+        { x: 12, y: 3, w: 8, h: 6, c: HAIR },
+        { x: 13, y: 5, w: 2, h: 2, c: SKIN },
+        { x: 15, y: 5, w: 2, h: 2, c: SKIN },
+        { x: 13, y: 9, w: 2, h: 1, c: PX },
+        { x: 15, y: 9, w: 2, h: 1, c: PX },
+        { x: 12, y: 10, w: 8, h: 4, c: CLOTH },
+        { x: 11, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 20, y: 14, w: 1, h: 4, c: SKIN },
+        { x: 12, y: 14, w: 8, h: 4, c: CLOTH_L },
+        { x: 10, y: 18, w: 3, h: 6, c: BOOT },
+        { x: 17, y: 18, w: 3, h: 6, c: BOOT },
+        { x: 9, y: 24, w: 4, h: 2, c: BOOT },
+        { x: 17, y: 24, w: 4, h: 2, c: BOOT },
+        { x: 21, y: 12, w: 4, h: 2, c: SWORD_D },
+        { x: 21, y: 11, w: 4, h: 2, c: SWORD },
+      ],
     ],
   },
 }
@@ -170,15 +248,24 @@ export const PRESET_OPTIONS = Object.entries(PRESETS).map(([id, preset]) => ({
 /** Tamanho de cada célula do spritesheet de preset. */
 export const PRESET_CELL = 32
 
-/** @param {CanvasRenderingContext2D} context @param {Segment} segment @param {string} color */
-function drawSegment(context, segment, color) {
-  context.strokeStyle = color
-  context.lineWidth = segment.width ?? 2
-  context.lineCap = 'square'
-  context.beginPath()
-  context.moveTo(segment.x1, segment.y1)
-  context.lineTo(segment.x2, segment.y2)
-  context.stroke()
+/**
+ * Desenha um "bloco" de pixels (retângulo preenchido) com contorno escuro
+ * para dar definição de pixel art.
+ *
+ * @param {CanvasRenderingContext2D} context
+ * @param {number} x
+ * @param {number} y
+ * @param {number} w
+ * @param {number} h
+ * @param {string} color
+ */
+function drawBlock(context, x, y, w, h, color) {
+  context.fillStyle = color
+  context.fillRect(x, y, w, h)
+  // Contorno nítido em volta de cada bloco para definir forma
+  context.strokeStyle = PX
+  context.lineWidth = 1
+  context.strokeRect(x, y, w, h)
 }
 
 /**
@@ -206,26 +293,24 @@ export function createPresetSheet(name) {
     throw new Error('Canvas 2D indisponível para gerar o preset.')
   }
   context.clearRect(0, 0, canvas.width, canvas.height)
+  context.imageSmoothingEnabled = false
 
   frames.forEach((frame, index) => {
     context.save()
     context.translate(index * PRESET_CELL, 0)
 
-    // Contorno escuro primeiro, para o sprite aparecer no fundo xadrez.
-    frame.segments.forEach((segment) => {
-      drawSegment(context, { ...segment, width: (segment.width ?? 2) + 2 }, BODY_DARK)
+    // Sombra de projeção para dar volume (deslocada 1px)
+    frame.forEach((block) => {
+      if (block.x + block.w <= 31 && block.y + block.h <= 31) {
+        context.fillStyle = '#020406'
+        context.fillRect(block.x + 1, block.y + 1, block.w, block.h)
+      }
     })
-    context.fillStyle = BODY_DARK
-    context.fillRect(frame.head[0] - 4, frame.head[1] - 4, 8, 8)
 
-    frame.segments.forEach((segment) => drawSegment(context, segment, BODY))
-    context.fillStyle = BODY
-    context.fillRect(frame.head[0] - 3, frame.head[1] - 3, 6, 6)
-
-    if (frame.sword) {
-      drawSegment(context, { ...frame.sword, width: 4 }, SWORD_DARK)
-      drawSegment(context, frame.sword, SWORD)
-    }
+    // Corpo principal
+    frame.forEach((block) => {
+      drawBlock(context, block.x, block.y, block.w, block.h, block.c)
+    })
 
     context.restore()
   })
