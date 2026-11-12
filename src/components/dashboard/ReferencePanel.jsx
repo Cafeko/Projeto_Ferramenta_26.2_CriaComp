@@ -187,7 +187,7 @@ export default function ReferencePanel({
               rows={2}
               value={artStyle}
               onChange={(event) => onArtStyleChange(event.target.value)}
-              placeholder="pixel art 16-bit, paleta limitada, fundo transparente…"
+              placeholder="Ex.: pixel art 16-bit, paleta limitada, contorno nítido, fundo transparente"
               className={`${inputClass} resize-y`}
             />
           </Field>

@@ -14,7 +14,6 @@ import FrameEditModal from './FrameEditModal'
 import PreviewPanel from './dashboard/PreviewPanel'
 import ReferencePanel from './dashboard/ReferencePanel'
 import {
-  DEFAULT_ART_STYLE,
   DEFAULT_PROVIDER,
   MAX_PREVIOUS_FRAMES,
   MAX_TOTAL_BASE64_CHARS,
@@ -199,7 +198,7 @@ export default function MainDashboard() {
 
   /* ----------------------------- Prompts -------------------------------- */
   const [appearance, setAppearance] = useState('')
-  const [artStyle, setArtStyle] = useState(DEFAULT_ART_STYLE)
+  const [artStyle, setArtStyle] = useState('')
 
   /* --------------------------- Geração ---------------------------------- */
   // Spritesheets brutos devolvidos pela IA (sem fatiar). Ficam guardados para
