@@ -1,5 +1,6 @@
 import { BookOpen, FlaskConical, Gamepad2, ShieldCheck } from 'lucide-react'
 
+import { ErrorBoundary } from './components/ErrorBoundary'
 import MainDashboard from './components/MainDashboard'
 
 export default function App() {
@@ -61,7 +62,9 @@ export default function App() {
           </div>
         </header>
 
-        <MainDashboard />
+        <ErrorBoundary>
+          <MainDashboard />
+        </ErrorBoundary>
 
         <footer className="border-t border-white/5">
           <div className="mx-auto flex max-w-[1600px] flex-col gap-2 px-4 py-5 text-[11px] text-slate-600 sm:flex-row sm:items-center sm:justify-between">

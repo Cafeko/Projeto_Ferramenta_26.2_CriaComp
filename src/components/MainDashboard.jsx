@@ -607,12 +607,16 @@ export default function MainDashboard() {
 
       // Se a IA devolveu um único sprite sheet (várias poses em uma imagem),
       // fatia localmente em frames individuais usando o pipeline Canvas.
+      // Só fatiar se o usuário quer uma grade (autoSlice) e a grade tem mais
+      // de uma célula; uma imagem única (1×1) não deve ser fatiada.
       let finalFrames = result.images
-      if (result.images.length === 1 && autoSlice) {
-        const cols = Math.max(1, Number.parseInt(columns, 10) || 1)
-        const rows = Math.max(1, Number.parseInt(rows, 10) || 1)
+      const gridCols = Math.max(1, Number.parseInt(columns, 10) || 1)
+      const gridRows = Math.max(1, Number.parseInt(rows, 10) || 1)
+      const isSingleImage = gridCols === 1 && gridRows === 1
+
+      if (result.images.length === 1 && autoSlice && !isSingleImage) {
         try {
-          const sliced = await sliceSpritesheet(result.images[0], cols, rows)
+          const sliced = await sliceSpritesheet(result.images[0], gridCols, gridRows)
           if (Array.isArray(sliced) && sliced.length > 0) {
             finalFrames = sliced
           }
@@ -624,6 +628,9 @@ export default function MainDashboard() {
           )
           console.error('[slice-spritesheet]', sliceError)
         }
+      } else if (result.images.length === 1 && isSingleImage) {
+        // Imagem única sem grade: usa como um único frame.
+        finalFrames = result.images
       }
 
       const safeFrames = Array.isArray(finalFrames) ? finalFrames : []
