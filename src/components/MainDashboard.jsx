@@ -547,11 +547,12 @@ export default function MainDashboard() {
         return
       }
 
-      const referenceImages = Array.isArray(referenceFrames)
-        ? referenceFrames.slice(0, MAX_REFERENCE_FRAMES)
-        : []
+      // A referência é enviada INTEIRA para a IA (spritesheet completa ou imagem única).
+      // Não fatiamos no frontend antes de enviar: a divisão em grid acontece
+      // apenas no frontend para exibição nos frames lado a lado e filmstrip.
+      const referenceImage = reference?.dataUrl ? [reference.dataUrl] : []
       try {
-        ensurePayloadSize(referenceImages)
+        ensurePayloadSize(referenceImage)
       } catch (error) {
         pushToast(describeApiError(error), 'error')
         return
@@ -573,7 +574,7 @@ export default function MainDashboard() {
           provider,
           apiKey: apiKey.trim(),
           modelId,
-          referenceImages,
+          referenceImages: referenceImage,
           characterAppearance: appearance.trim(),
           artStyle: artStyle.trim(),
         })
@@ -606,9 +607,8 @@ export default function MainDashboard() {
       }
 
       // Se a IA devolveu um único sprite sheet (várias poses em uma imagem),
-      // fatia localmente em frames individuais usando o pipeline Canvas.
-      // Só fatiar se o usuário quer uma grade (autoSlice) e a grade tem mais
-      // de uma célula; uma imagem única (1×1) não deve ser fatiada.
+      // fatia LOCALMENTE no frontend apenas para exibição nos frames lado a lado
+      // e filmstrip. Não afeta o que foi gerado pela IA.
       let finalFrames = result.images
       const gridCols = Math.max(1, Number.parseInt(columns, 10) || 1)
       const gridRows = Math.max(1, Number.parseInt(rows, 10) || 1)
@@ -621,7 +621,6 @@ export default function MainDashboard() {
             finalFrames = sliced
           }
         } catch (sliceError) {
-          // Se falhar o fatiamento, mantém a imagem original como um único frame.
           pushToast(
             'Não foi possível fatiar automaticamente o sprite sheet. Use os campos Colunas/Linhas e gere novamente.',
             'warning',
@@ -662,7 +661,7 @@ export default function MainDashboard() {
     modelId,
     provider,
     pushToast,
-    referenceFrames,
+    reference,
     rows,
   ])
 
