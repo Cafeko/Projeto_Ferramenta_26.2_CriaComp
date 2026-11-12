@@ -688,7 +688,10 @@ def _generation_body(request: GenerateRequest, frame_count: int) -> str:
             f"{frame_count} frames, in the same left-to-right order as the pose "
             "references, evenly spaced with no gaps, no borders, no labels and no "
             "extra panels. Every frame must use the same canvas size, character "
-            "scale, ground line and palette."
+            "scale, ground line and palette.\n"
+            "CRITICAL: Each frame in the sprite sheet must show a DIFFERENT phase "
+            "of the walk cycle. Frame 1 = reference pose 1, frame 2 = reference "
+            "pose 2, etc. Do NOT repeat the same pose in multiple frames."
         )
     else:
         output_rule = (
@@ -712,22 +715,23 @@ def _generation_body(request: GenerateRequest, frame_count: int) -> str:
 
     return f"""{task}
 
-CHARACTER APPEARANCE:
+CHARACTER APPEARANCE (MUST FOLLOW EXACTLY):
 {character}
 
-ART STYLE:
+ART STYLE (MUST FOLLOW EXACTLY - this is not optional):
 {style}
 
 {output_rule}
 
 CONSISTENCY RULES:
 - Keep the same character design, proportions, palette, outline thickness and pixel density in every frame.
-- Preserve the pose and silhouette of each reference frame as closely as possible.
+- Preserve the pose and silhouette of each reference frame as closely as possible. Each frame must match its corresponding reference pose.
 - Show the full body without cropping the feet, hands or head.
 - Keep the character centered and at the same relative scale in every frame.
 - Isolate the sprite on a completely flat, uniform background. If the model supports transparency, use a transparent background; otherwise use a single solid chroma-key color (pure magenta #FF00FF) with no shadows, gradients, texture or scenery.
 - No text, no watermark, no UI, no speech bubbles, no extra characters and no background objects.
-- Pixel art only: hard edges, no anti-aliasing, no blur, no noise and no 3D rendering."""
+- Pixel art only: hard edges, no anti-aliasing, no blur, no noise and no 3D rendering.
+- The art style description above is MANDATORY. Apply it to every pixel of every frame."""
 
 
 def _correction_body(
@@ -1114,7 +1118,7 @@ class GeminiAdapter(ProviderAdapter):
                 "input": inputs,
                 "response_format": {
                     "type": "image",
-                    "mime_type": "image/png",
+                    "mime_type": "image/jpeg",
                     "aspect_ratio": _frame_aspect(plan.frame_count),
                 },
             },

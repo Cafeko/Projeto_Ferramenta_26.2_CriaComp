@@ -547,10 +547,31 @@ export default function MainDashboard() {
         throw new Error('A IA não retornou nenhuma imagem. Tente outro modelo ou prompt.')
       }
 
-      setFrames(result.images)
-      setExportColumns(String(Math.min(4, result.images.length)))
+      // Se a IA devolveu um único sprite sheet (várias poses em uma imagem),
+      // fatia localmente em frames individuais usando o pipeline Canvas.
+      let finalFrames = result.images
+      if (result.images.length === 1 && autoSlice) {
+        const cols = Math.max(1, Number.parseInt(columns, 10) || 1)
+        const rows = Math.max(1, Number.parseInt(rows, 10) || 1)
+        try {
+          const sliced = await sliceSpritesheet(result.images[0], cols, rows)
+          if (sliced.length > 0) {
+            finalFrames = sliced
+          }
+        } catch (sliceError) {
+          // Se falhar o fatiamento, mantém a imagem original como um único frame.
+          pushToast(
+            'Não foi possível fatiar automaticamente o sprite sheet. Use os campos Colunas/Linhas e gere novamente.',
+            'warning',
+          )
+          console.error('[slice-spritesheet]', sliceError)
+        }
+      }
+
+      setFrames(finalFrames)
+      setExportColumns(String(Math.min(4, finalFrames.length)))
       pushToast(
-        `${result.images.length} frame${result.images.length === 1 ? '' : 's'} gerado${result.images.length === 1 ? '' : 's'} com sucesso.`,
+        `${finalFrames.length} frame${finalFrames.length === 1 ? '' : 's'} gerado${finalFrames.length === 1 ? '' : 's'} com sucesso.`,
         'success',
       )
     } catch (error) {
@@ -565,13 +586,16 @@ export default function MainDashboard() {
     apiKey,
     appearance,
     artStyle,
+    autoSlice,
     canGenerate,
+    columns,
     generateHint,
     generating,
     modelId,
     provider,
     pushToast,
     referenceFrames,
+    rows,
   ])
 
   const handleEditFrame = useCallback((index) => {
