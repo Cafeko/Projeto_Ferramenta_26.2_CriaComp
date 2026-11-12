@@ -309,7 +309,7 @@ export default function ReferencePanel({
                 </span>
                 {limited && (
                   <span className="font-medium text-amber-300">
-                    usaremos os primeiros {maxReferenceFrames}
+                    limitados a {maxReferenceFrames} frames
                   </span>
                 )}
               </div>

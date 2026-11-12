@@ -46,8 +46,8 @@ export const PROVIDERS = [
 export const DEFAULT_PROVIDER = PROVIDERS[0].id
 
 /** Limites alinhados ao backend (`MAX_REFERENCE_IMAGES` / `MAX_PREVIOUS_IMAGES`). */
-export const MAX_REFERENCE_FRAMES = 12
-export const MAX_PREVIOUS_FRAMES = 12
+export const MAX_REFERENCE_FRAMES = 32
+export const MAX_PREVIOUS_FRAMES = 32
 
 /** Margem segura abaixo do limite de ~4,5 MB por requisição da Vercel. */
 export const MAX_TOTAL_BASE64_CHARS = 3_900_000
