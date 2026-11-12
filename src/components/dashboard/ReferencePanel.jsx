@@ -78,18 +78,16 @@ export default function ReferencePanel({
 
   // Miniaturas dos presets: geradas uma única vez no navegador.
   useEffect(() => {
-    ;(async () => {
-      try {
-        /** @type {Record<string, string>} */
-        const next = {}
-        for (const option of PRESET_OPTIONS) {
-          next[option.id] = await createPresetSheet(option.id)
-        }
-        setThumbs(next)
-      } catch {
-        setThumbs({})
+    try {
+      /** @type {Record<string, string>} */
+      const next = {}
+      for (const option of PRESET_OPTIONS) {
+        next[option.id] = createPresetSheet(option.id)
       }
-    })()
+      setThumbs(next)
+    } catch {
+      setThumbs({})
+    }
   }, [])
 
   function openPicker() {

@@ -309,11 +309,11 @@ export default function MainDashboard() {
 
   /* ------------------------- Preset inicial ------------------------------ */
   const selectPreset = useCallback(
-    async (id) => {
+    (id) => {
       const preset = PRESETS[id]
       if (!preset) return
       try {
-        const sheet = await createPresetSheet(id)
+        const sheet = createPresetSheet(id)
         setPresetId(id)
         setReference({
           dataUrl: sheet,
@@ -574,6 +574,10 @@ export default function MainDashboard() {
         artStyle: artStyle.trim(),
       })
 
+      if (!result || !Array.isArray(result.images)) {
+        throw new Error('A API não retornou um resultado válido.')
+      }
+
       if (result.images.length === 0) {
         throw new Error('A IA não retornou nenhuma imagem. Tente outro modelo ou prompt.')
       }
@@ -586,7 +590,7 @@ export default function MainDashboard() {
         const rows = Math.max(1, Number.parseInt(rows, 10) || 1)
         try {
           const sliced = await sliceSpritesheet(result.images[0], cols, rows)
-          if (sliced.length > 0) {
+          if (Array.isArray(sliced) && sliced.length > 0) {
             finalFrames = sliced
           }
         } catch (sliceError) {
@@ -599,7 +603,7 @@ export default function MainDashboard() {
         }
       }
 
-      setFrames(finalFrames)
+      setFrames(Array.isArray(finalFrames) ? finalFrames : [])
       setExportColumns(String(Math.min(4, finalFrames.length)))
       pushToast(
         `${finalFrames.length} frame${finalFrames.length === 1 ? '' : 's'} gerado${finalFrames.length === 1 ? '' : 's'} com sucesso.`,
@@ -610,6 +614,7 @@ export default function MainDashboard() {
       setGenerationError(message)
       pushToast(message, 'error')
       console.error('[generate]', error)
+      setFrames([])
     } finally {
       setGenerating(false)
     }

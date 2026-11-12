@@ -358,44 +358,17 @@ function drawBlock(context, x, y, w, h, color) {
 }
 
 /**
- * Tenta carregar um preset de arquivo público (public/presets/{name}.png).
- * Se não encontrar, retorna null e o chamador gera proceduralmente.
- *
- * @param {'idle' | 'walk' | 'jump' | 'attack'} name
- * @returns {Promise<string | null>}
- */
-async function loadPresetFromFile(name) {
-  try {
-    const response = await fetch(`/presets/${name}.png`)
-    if (!response.ok) return null
-    const blob = await response.blob()
-    return URL.createObjectURL(blob)
-  } catch {
-    return null
-  }
-}
-
-/**
  * Cria o spritesheet de um preset (4 colunas × 1 linha, células 32x32) como
- * Data URL PNG. Tenta carregar de public/presets/{name}.png primeiro; se não
- * encontrar, gera proceduralmente no Canvas.
+ * Data URL PNG. Gera proceduralmente no Canvas (sem arquivos binários).
  *
  * @param {'idle' | 'walk' | 'jump' | 'attack'} name
- * @returns {Promise<string>}
+ * @returns {string}
  */
-export async function createPresetSheet(name) {
+export function createPresetSheet(name) {
   const preset = PRESETS[name]
   if (!preset) {
     throw new Error(`Preset de movimento desconhecido: ${name}`)
   }
-
-  // 1) Tenta carregar imagem pública do usuário (public/presets/{name}.png)
-  const fileUrl = await loadPresetFromFile(name)
-  if (fileUrl) {
-    return fileUrl
-  }
-
-  // 2) Fallback: gera proceduralmente no Canvas
   if (typeof document === 'undefined') {
     throw new Error('Os presets só podem ser gerados no navegador.')
   }
