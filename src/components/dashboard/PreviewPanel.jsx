@@ -95,6 +95,7 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
  *   onEditFrame: (index: number) => void,
  *   editingFrame: number | null,
  *   slicing: boolean,
+ *   referenceGrid: { columns: number, rows: number, total?: number },
  *   columns: string,
  *   rows: string,
  *   autoSlice: boolean,
@@ -118,6 +119,7 @@ export default function PreviewPanel({
   onEditFrame,
   editingFrame,
   slicing,
+  referenceGrid,
   columns,
   rows,
   autoSlice,
@@ -136,6 +138,9 @@ export default function PreviewPanel({
   // Os frames já chegam fatiados do MainDashboard. A grade é recalculada lá
   // a partir do spritesheet bruto, então trocar colunas/linhas não apaga nada.
   const displayFrames = gens
+  const referenceTotal = referenceGrid
+    ? referenceGrid.total ?? referenceGrid.columns * referenceGrid.rows
+    : 0
 
   return (
     <div className="space-y-4">
@@ -246,11 +251,21 @@ export default function PreviewPanel({
       {/* Controle de Grid - aqui no meio, não apaga a imagem ao mudar */}
       <Card
         title="Grade de Frames (Grid)"
-        subtitle="Divide o spritesheet gerado em frames individuais para exibição"
+        subtitle="Só recorta o resultado para exibição"
         icon={Grid3X3}
         bodyClassName="p-3"
       >
         <div className="space-y-3">
+          <div className="rounded-lg border border-cyan-400/15 bg-cyan-400/[0.04] px-2.5 py-2 text-[11px] leading-relaxed text-slate-400">
+            A IA gera{' '}
+            <strong className="text-cyan-300">
+              {referenceTotal} frame{referenceTotal === 1 ? '' : 's'}
+            </strong>{' '}
+            conforme a grade da referência ({referenceGrid?.columns}×
+            {referenceGrid?.rows}). Os campos abaixo apenas recortam o resultado
+            para exibição — mudar a grade não altera a quantidade gerada.
+          </div>
+
           <label className="flex cursor-pointer items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
               <Grid3X3 className="size-3.5 text-cyan-400" />

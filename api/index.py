@@ -232,12 +232,28 @@ class PromptPlan:
     visuals: tuple[VisualInput, ...]
     target_frame_index: int | None
     frame_count_override: int | None = None
+    grid_columns: int | None = None
+    grid_rows: int | None = None
 
     @property
     def prompt(self) -> str:
         if not self.order_text:
             return self.body
         return f"{self.order_text}\n\n{self.body}"
+
+    @property
+    def aspect(self) -> str:
+        """Proporção adequada ao formato da grade de saída."""
+        columns = max(1, self.grid_columns or self.frame_count)
+        rows = max(1, self.grid_rows or 1)
+        ratio = columns / rows
+        if ratio >= 2.6:
+            return "21:9"
+        if ratio >= 1.8:
+            return "16:9"
+        if ratio >= 1.25:
+            return "3:2"
+        return "1:1"
 
     @property
     def frame_count(self) -> int:
@@ -998,6 +1014,8 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
         visuals=tuple(visuals),
         target_frame_index=None,
         frame_count_override=requested_frames,
+        grid_columns=request.grid_columns or requested_frames,
+        grid_rows=request.grid_rows or 1,
     )
 
 
@@ -1216,7 +1234,7 @@ class GeminiAdapter(ProviderAdapter):
                 "response_format": {
                     "type": "image",
                     "mime_type": "image/jpeg",
-                    "aspect_ratio": _frame_aspect(plan.frame_count),
+                    "aspect_ratio": plan.aspect,
                 },
             },
         )
@@ -1579,7 +1597,7 @@ class OpenRouterAdapter(ProviderAdapter):
             "model": model_id,
             "prompt": plan.prompt,
             "n": 1,
-            "aspect_ratio": _frame_aspect(plan.frame_count),
+            "aspect_ratio": plan.aspect,
             "output_format": "png",
         }
         if plan.visuals:

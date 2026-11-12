@@ -369,6 +369,127 @@ function splitAxis(total, parts) {
 }
 
 /**
+ * Conta quantos blocos contínuos de conteúdo existem em uma projeção.
+ * Pequenos vãos (1 px) são tratados como parte do mesmo bloco.
+ *
+ * @param {Uint32Array} projection
+ * @param {number} minPixels
+ * @returns {number}
+ */
+function countContentRuns(projection, minPixels) {
+  let runs = 0
+  let inRun = false
+  let gap = 0
+  for (let index = 0; index < projection.length; index += 1) {
+    if (projection[index] >= minPixels) {
+      if (!inRun) {
+        runs += 1
+        inRun = true
+      }
+      gap = 0
+    } else if (inRun) {
+      gap += 1
+      if (gap >= 2) inRun = false
+    }
+  }
+  return runs
+}
+
+/**
+ * Detecta a grade (colunas × linhas) de uma spritesheet observando os pixels.
+ *
+ * Fundo transparente: conta colunas/linhas que possuem pixels opacos.
+ * Fundo sólido: usa a cor dos cantos como fundo e conta o que difere dela.
+ *
+ * @param {ImageSource} source Spritesheet completa (Data URL, Blob etc.).
+ * @param {{ maxCells?: number }} [options]
+ * @returns {Promise<{ columns: number, rows: number, total: number }>}
+ */
+export async function detectSpriteGrid(source, { maxCells = 64 } = {}) {
+  const sheet = await loadDrawable(source, 'a imagem de referência')
+
+  try {
+    const { width, height } = sheet
+    const canvas = createCanvas(width, height)
+    const context = getContext(canvas, { readFrequently: true })
+    context.imageSmoothingEnabled = false
+    context.clearRect(0, 0, width, height)
+    context.drawImage(sheet.drawable, 0, 0, width, height)
+
+    const imageData = readImageData(
+      context,
+      width,
+      height,
+      'a imagem de referência',
+    )
+    const data = imageData.data
+    const pixelCount = width * height
+
+    // A imagem usa transparência? Então ela é o critério mais confiável.
+    let translucent = 0
+    for (let offset = 3; offset < data.length; offset += 4) {
+      if (data[offset] < 250) translucent += 1
+    }
+    const useAlpha = translucent > pixelCount * 0.01
+
+    // Fundo opaco: usa a média dos quatro cantos.
+    let background = null
+    if (!useAlpha) {
+      const corners = [
+        0,
+        (width - 1) * 4,
+        (height - 1) * width * 4,
+        (height * width - 1) * 4,
+      ]
+      let red = 0
+      let green = 0
+      let blue = 0
+      for (const offset of corners) {
+        red += data[offset]
+        green += data[offset + 1]
+        blue += data[offset + 2]
+      }
+      background = [red / 4, green / 4, blue / 4]
+    }
+
+    const columnsContent = new Uint32Array(width)
+    const rowsContent = new Uint32Array(height)
+
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        const offset = (y * width + x) * 4
+        let content
+        if (useAlpha) {
+          content = data[offset + 3] > 24
+        } else {
+          const dr = data[offset] - background[0]
+          const dg = data[offset + 1] - background[1]
+          const db = data[offset + 2] - background[2]
+          content = dr * dr + dg * dg + db * db > 24 * 24
+        }
+        if (content) {
+          columnsContent[x] += 1
+          rowsContent[y] += 1
+        }
+      }
+    }
+
+    const minColumnPixels = Math.max(1, Math.floor(height * 0.01))
+    const minRowPixels = Math.max(1, Math.floor(width * 0.01))
+    const columns = countContentRuns(columnsContent, minColumnPixels)
+    const rows = countContentRuns(rowsContent, minRowPixels)
+    const total = columns * rows
+
+    if (total >= 1 && total <= maxCells) {
+      return { columns, rows, total }
+    }
+    return { columns: 1, rows: 1, total: 1 }
+  } finally {
+    sheet.dispose()
+  }
+}
+
+/**
  * Dispara o download de um Blob no navegador.
  *
  * @param {Blob} blob

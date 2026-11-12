@@ -195,10 +195,11 @@ Resposta:
 
 - **Geração do zero** (`correction_prompt` ausente): as `reference_images` são
   usadas como referência de pose/movimento. `frame_count` informa quantos frames
-  a saída deve ter (normalmente `colunas × linhas` da grade da referência); a
-  referência pode ser uma única spritesheet — ela é enviada inteira e a IA deve
-  desenhar o mesmo número de frames. O resultado é uma spritesheet horizontal;
-  a divisão em frames acontece só no frontend.
+  a saída deve ter (o total detectado na grade da referência, ex.: 16) e
+  `grid_columns`/`grid_rows` definem o formato da grade de saída (ex.: 4×4). A
+  referência é enviada inteira e a IA deve desenhar o mesmo número de frames, na
+  mesma ordem. O resultado é uma spritesheet; a divisão em frames acontece só no
+  frontend — e usa a grade real detectada na imagem devolvida.
 - **Correção** (`correction_prompt` presente): as `previous_generated_images`
   são a fonte de verdade visual. Se `target_frame_index` for informado, apenas
   aquele frame é corrigido (índice começa em `0`); caso contrário, a correção é
@@ -266,13 +267,16 @@ duas colunas em tablets):
 ### Coluna esquerda — configuração
 - **BYOK:** provedor, chave (com botão `Validar`), lista dinâmica de modelos e
   link `Obter chave` para o console de cada provedor.
-- **Referência de movimento:** presets `Walk`, `Run` e `Attack` ou drag & drop
-  de PNG/spritesheet. Spritesheets ganham campos de **Colunas/Linhas** e o
-  checkbox **Auto-fatiar grid** (a grade é estimada pelas dimensões e pode ser
-  ajustada à mão).
+- **Referência de movimento:** presets `Idle`, `Walk`, `Jump` e `Attack` ou drag
+  & drop de PNG/spritesheet. O app **detecta a grade real da imagem** pelos
+  pixels (transparência ou cor de fundo) e mostra os campos **Colunas/Linhas**
+  da referência, com botão **detectar** para rodar de novo. É essa grade que
+  define quantos frames a IA deve gerar — o painel central só recorta o
+  resultado. Ex.: uma spritesheet 4×4 gera 16 frames mesmo que o painel esteja
+  exibindo 4 colunas.
 - **Prompt:** aparência do personagem e estilo de arte.
 - **`[ GERAR NOVO SPRITESHEET ]`** limpa o histórico e gera tudo do zero,
-  enviando uma referência de pose por frame.
+  enviando a referência inteira e o número real de frames para a IA.
 
 ### Coluna central — preview e filmstrip
 - Player lado a lado com a **animação original** e a **nova animação**, em loop
@@ -320,6 +324,10 @@ await exportGIF(aligned, 8)
 
 - **`sliceSpritesheet(imageFile, columns, rows)`** — recorta a grade em frames
   PNG transparentes, na ordem de leitura (linha a linha).
+- **`detectSpriteGrid(imageFile, options)`** — detecta `colunas × linhas` da
+  spritesheet pelos pixels (alpha ou diferença em relação à cor de fundo dos
+  cantos), com limite de 64 células; usado para saber quantos frames a IA deve
+  gerar e para recortar a imagem devolvida mesmo se o modelo mudar a grade.
 - **`alignBoundingBox(base64Frame, options)`** — usa `getImageData()` para
   achar a caixa dos pixels com alpha > 0 e recentraliza o sprite. Mantém o
   tamanho original por padrão; `{ size: 64 }` padroniza em 64x64,

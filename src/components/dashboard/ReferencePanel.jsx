@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   Film,
+  Grid3X3,
   Image as ImageIcon,
+  Loader2,
   Palette,
   RefreshCw,
+  ScanLine,
   Sparkles,
   Upload,
   User,
@@ -27,6 +30,9 @@ import { Card, Field, PrimaryButton, inputClass, labelClass } from './ui'
  *   onAppearanceChange: (value: string) => void,
  *   artStyle: string,
  *   onArtStyleChange: (value: string) => void,
+ *   referenceGrid: { columns: number, rows: number, total?: number },
+ *   onReferenceGridChange: (axis: 'columns' | 'rows', value: string) => void,
+ *   onDetectReferenceGrid: () => Promise<void> | void,
  *   onGenerate: () => void,
  *   generating: boolean,
  *   elapsed: number,
@@ -44,6 +50,9 @@ export default function ReferencePanel({
   onAppearanceChange,
   artStyle,
   onArtStyleChange,
+  referenceGrid,
+  onReferenceGridChange,
+  onDetectReferenceGrid,
   onGenerate,
   generating,
   elapsed,
@@ -53,6 +62,7 @@ export default function ReferencePanel({
   const inputRef = useRef(null)
   const [dragging, setDragging] = useState(false)
   const [thumbs, setThumbs] = useState({})
+  const [detecting, setDetecting] = useState(false)
 
   // Miniaturas dos presets: geradas uma única vez no navegador.
   useEffect(() => {
@@ -218,6 +228,91 @@ export default function ReferencePanel({
                 </div>
               )}
             </div>
+
+            {reference && (
+              <div className="rounded-lg border border-white/5 bg-black/20 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
+                    <Grid3X3 className="size-3.5 text-cyan-400" />
+                    Frames da referência
+                  </p>
+                  <button
+                    type="button"
+                    onClick={async (event) => {
+                      event.stopPropagation()
+                      setDetecting(true)
+                      try {
+                        await onDetectReferenceGrid()
+                      } finally {
+                        setDetecting(false)
+                      }
+                    }}
+                    disabled={detecting}
+                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-cyan-300 transition hover:bg-white/5 disabled:opacity-50"
+                  >
+                    {detecting ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : (
+                      <ScanLine className="size-3" />
+                    )}
+                    detectar
+                  </button>
+                </div>
+
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div>
+                    <label
+                      className={`${labelClass} mb-1`}
+                      htmlFor="ref-grid-columns"
+                    >
+                      Colunas
+                    </label>
+                    <input
+                      id="ref-grid-columns"
+                      type="number"
+                      min={1}
+                      max={64}
+                      value={referenceGrid.columns}
+                      onChange={(event) =>
+                        onReferenceGridChange('columns', event.target.value)
+                      }
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label
+                      className={`${labelClass} mb-1`}
+                      htmlFor="ref-grid-rows"
+                    >
+                      Linhas
+                    </label>
+                    <input
+                      id="ref-grid-rows"
+                      type="number"
+                      min={1}
+                      max={64}
+                      value={referenceGrid.rows}
+                      onChange={(event) =>
+                        onReferenceGridChange('rows', event.target.value)
+                      }
+                      className={inputClass}
+                    />
+                  </div>
+                </div>
+
+                <p className="mt-2 text-[11px] text-slate-500">
+                  <strong className="text-cyan-300">
+                    {referenceGrid.total ??
+                      referenceGrid.columns * referenceGrid.rows}{' '}
+                    frame{(referenceGrid.total ??
+                      referenceGrid.columns * referenceGrid.rows) === 1
+                      ? ''
+                      : 's'}
+                  </strong>{' '}
+                  — a IA vai gerar exatamente essa quantidade.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </Card>
