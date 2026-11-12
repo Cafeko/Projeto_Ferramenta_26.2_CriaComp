@@ -182,6 +182,7 @@ Resposta:
   "api_key": "SUA_CHAVE",
   "model_id": "gemini-nano-banana-2.1",
   "reference_images": ["<base64 ou data URL>"],
+  "style_images": ["<base64 ou data URL opcional>"],
   "character_appearance": "Cavaleira de armadura azul, cabelo curto...",
   "art_style": "Pixel art 16-bit, paleta limitada, contorno grosso",
   "frame_count": 16,
@@ -194,12 +195,18 @@ Resposta:
 ```
 
 - **Geração do zero** (`correction_prompt` ausente): as `reference_images` são
-  usadas como referência de pose/movimento. `frame_count` informa quantos frames
-  a saída deve ter (o total detectado na grade da referência, ex.: 16) e
-  `grid_columns`/`grid_rows` usam essa mesma grade (ex.: 4×4). A referência é
-  enviada inteira e a IA deve desenhar o mesmo número de frames, na mesma ordem.
-  O resultado é uma spritesheet; a divisão em frames acontece só no frontend,
-  com os mesmos campos Colunas/Linhas aplicados à referência e ao resultado.
+  usadas **apenas como referência de pose/posição** (template técnico de layout,
+  quantidade de frames e posicionamento), nunca como referência visual.
+  `style_images` (opcional) definem **apenas o estilo visual**: pixel density,
+  paleta, contorno, sombreamento e nível de detalhe. O texto `art_style` também
+  define o estilo. Se nem imagem nem texto de estilo forem enviados, a própria
+  referência de movimento também passa a valer como estilo. `frame_count`
+  informa quantos frames a saída deve ter (o total detectado na referência,
+  ex.: 16) e `grid_columns`/`grid_rows` usam essa mesma grade (ex.: 4×4). A
+  referência é enviada inteira e a IA deve desenhar o mesmo número de frames, na
+  mesma ordem. O resultado é uma spritesheet; a divisão em frames acontece só no
+  frontend, com os mesmos campos Colunas/Linhas aplicados à referência e ao
+  resultado.
 - **Correção** (`correction_prompt` presente): as `previous_generated_images`
   são a fonte de verdade visual.
   - **Frame individual:** envie somente aquele frame e `target_frame_index: 0`
@@ -279,7 +286,11 @@ duas colunas em tablets):
   quanto o resultado novo**. Ex.: uma spritesheet 4×4 gera 16 frames.
 - **Presets rápidos:** removidos da interface; o gerador procedural continua
   guardado em `src/utils/presets.js` para uso futuro.
-- **Prompt:** aparência do personagem e estilo de arte.
+- **Prompt:** aparência do personagem e estilo de arte. O estilo pode ser
+  descrito em texto e/ou enviado como **imagem de referência de estilo**
+  independente. A imagem de pose define apenas poses/posições; a de estilo
+  define apenas a aparência visual. Sem texto e sem imagem de estilo, a
+  referência de movimento também vale como estilo.
 - **`[ GERAR NOVO SPRITESHEET ]`** limpa o histórico e gera tudo do zero,
   enviando a referência inteira e o número real de frames para a IA.
 

@@ -140,6 +140,9 @@ class GenerateRequest(_ProviderRequest):
     reference_images: list[str] = Field(
         default_factory=list, max_length=MAX_REFERENCE_IMAGES
     )
+    # Imagens de referência de ESTILO (opcionais): definem apenas a aparência
+    # visual final (pixel density, paleta, contorno, nível de detalhe).
+    style_images: list[str] = Field(default_factory=list, max_length=4)
     character_appearance: str = Field(default="", max_length=6000)
     art_style: str = Field(default="", max_length=6000)
     previous_generated_images: list[str] = Field(
@@ -177,8 +180,10 @@ class GenerateRequest(_ProviderRequest):
         return normalized or None
 
     def total_base64_chars(self) -> int:
-        return sum(len(item) for item in self.reference_images) + sum(
-            len(item) for item in self.previous_generated_images
+        return (
+            sum(len(item) for item in self.reference_images)
+            + sum(len(item) for item in self.style_images)
+            + sum(len(item) for item in self.previous_generated_images)
         )
 
 
@@ -220,7 +225,7 @@ class ImagePayload:
 @dataclass(frozen=True)
 class VisualInput:
     label: str
-    role: Literal["pose", "previous"]
+    role: Literal["pose", "style", "previous"]
     image: ImagePayload
 
 
@@ -700,13 +705,44 @@ def _order_text(visuals: Iterable[VisualInput]) -> str:
 
 
 def _generation_body(request: GenerateRequest, frame_count: int) -> str:
-    character = request.character_appearance or (
-        "A generic 2D game character."
-    )
-    style = request.art_style or (
-        "Clean 16-bit pixel art with crisp 1-pixel outlines, a limited cohesive "
-        "palette, flat shading and no anti-aliasing."
-    )
+    character = request.character_appearance or "A generic 2D game character."
+    has_style_image = bool(request.style_images)
+    has_style_text = bool(request.art_style.strip())
+
+    if has_style_text:
+        style_block = request.art_style
+    elif has_style_image:
+        style_block = (
+            "Follow the ART STYLE REFERENCE image for the rendering style "
+            "(pixel density, palette, outlines, shading and level of detail)."
+        )
+    else:
+        style_block = (
+            "No art style image or description was provided. In this case only, "
+            "use the POSE REFERENCE's rendering style as the art style too "
+            "(pixel density, palette, outlines, shading and level of detail), "
+            "while still using its poses only."
+        )
+
+    if has_style_image:
+        style_source_rule = (
+            "- An ART STYLE REFERENCE image is provided. It defines ONLY the "
+            "rendering style: pixel density, level of abstraction, palette, "
+            "outline style, shading, texture and amount of detail. Do NOT copy "
+            "its character identity, clothing, pose, frame layout or background.\n"
+        )
+    elif has_style_text:
+        style_source_rule = (
+            "- No art style image was provided. The ART STYLE DESCRIPTION below "
+            "defines the rendering style.\n"
+        )
+    else:
+        style_source_rule = (
+            "- Neither an art style image nor an art style description was "
+            "provided. The POSE REFERENCE is the only fallback for rendering "
+            "style: match its pixel density, palette, outline style, shading and "
+            "level of detail. Its poses still remain the only source of poses.\n"
+        )
 
     single_sheet = len(request.reference_images) == 1
     grid_columns = request.grid_columns or (frame_count if frame_count > 0 else 1)
@@ -760,81 +796,97 @@ def _generation_body(request: GenerateRequest, frame_count: int) -> str:
             "sprite sheet, no border and no extra panels."
         )
 
-    if request.reference_images:
-        task = (
-            "TASK: Generate a new 2D game sprite animation by transferring ONLY the "
-            "MOTION from the POSE REFERENCE onto the CHARACTER APPEARANCE described "
-            "below.\n"
-            f"{layout_rule}\n"
-            f"You must produce EXACTLY {frame_count} output frame(s), one equivalent "
-            "frame for each reference frame, in the same order.\n"
-            "ROLE SEPARATION (read carefully):\n"
-            "1) POSE REFERENCE = motion/pose/silhouette/camera angle ONLY. It tells "
-            "   HOW the character moves and from which angle it is viewed. It does "
-            "   NOT define identity, clothing, colors, proportions, or art style.\n"
-            "2) CHARACTER APPEARANCE = who the character is (clothing, colors, "
-            "   proportions, hair, equipment, etc.). Fit these visual traits INTO the "
-            "   poses shown by the references.\n"
-            "3) ART STYLE = the rendering style of the final image. It overrides any "
-            "   conflicting visual detail.\n"
-        )
-    else:
-        task = (
-            "TASK: Generate a new 2D game sprite for the character described below. "
-            "No pose reference was provided, so use a clear neutral idle pose."
+    if not request.reference_images:
+        layout_rule = (
+            "No pose reference was provided. Use a clear neutral idle pose."
         )
 
-    return f"""{task}
+    return f"""You are generating a 2D game sprite sheet.
 
-CHARACTER APPEARANCE (fit into the reference poses):
+TASK: Transfer ONLY the poses from the POSE REFERENCE onto the CHARACTER
+described below, rendered in the ART STYLE. The result must look like a native
+low-resolution game sprite sheet created directly within the target pixel
+limitations of the art style.
+
+INPUT ROLES (strict):
+1) POSE REFERENCE = frame layout, pose, position, timing, silhouette, body
+   orientation and camera angle ONLY. It is a technical template. NEVER copy
+   its character identity, clothing, colors, palette, shading, texture or
+   rendering style.
+2) ART STYLE REFERENCE (when present) = rendering style ONLY: pixel density,
+   level of abstraction, palette discipline, outline style, shading, texture
+   and amount of detail. NEVER copy its character identity, pose, frame layout
+   or background.
+3) CHARACTER DESCRIPTION = who the character is (clothing, colors, proportions,
+   hair, equipment, defining traits).
+4) ART STYLE DESCRIPTION = the rendering style.
+{style_source_rule}- {layout_rule}
+
+CHARACTER DESCRIPTION:
 {character}
 
-ART STYLE (MANDATORY - overrides any conflicting detail):
-{style}
+ART STYLE (MANDATORY - overrides conflicting details):
+{style_block}
 
 {output_rule}
 
-ROLE RULES (strict):
-- POSE REFERENCE images define ONLY pose, motion timing, silhouette, body
-  orientation, camera angle, limb positions and spacing. Copy the POSE exactly,
-  but NEVER copy the reference character's identity, clothing, colors or art
-  style. If the user uploaded their own sprite/spritesheet, treat it as pose/
-  movement and camera-angle reference only; its pixel-art style must not bleed
-  into the final image.
-- CHARACTER APPEARANCE describes how the character looks. Place these traits onto
-  the reference poses. Only include characteristics that make sense for the shown
-  pose: e.g. if the character has something on its back but the reference shows
-  the character front-facing, the back detail must not appear. If the art style is
-  too simple for fine details, drop smaller details rather than muddying the
-  pixel art.
-- ART STYLE governs the final look. Respect its limitations and particularities:
-  e.g. if the character is described with a colorful shirt but the art style is
-  black and white, the final image MUST be black and white. If the style limits
-  the palette, obey the limit even if the appearance description asks for more
-  colors.
-- FRAME COUNT: output EXACTLY {frame_count} frame(s) in the sprite sheet.
-  When {frame_count} is greater than 1, the result MUST be a sprite sheet with
-  {frame_count} frames; returning a single frame is wrong. Count the cells of
-  the reference sheet and match that count exactly.
-- Merge the three inputs into one coherent result: correct motion from the
-  references, correct look from the appearance, correct rendering from the art
-  style.
+POSE REFERENCE AS TECHNICAL TEMPLATE:
+- Preserve the same canvas dimensions and aspect ratio as the POSE REFERENCE
+  sprite sheet.
+- Preserve the same number of frames, the same frame order, the same grid
+  arrangement and the same spacing between frames.
+- Preserve the approximate position of the character inside each frame,
+  including the amount of empty space surrounding it. Do not automatically
+  center every frame or reposition the character independently.
+- Preserve the approximate sprite scale relative to each frame. Do not enlarge
+  the character to show more detail.
+- Do not crop, extend, add margins or padding, change the aspect ratio or
+  upscale the canvas.
+- Do not add, remove, duplicate, split or merge frames.
+- Each output frame corresponds directly to the same reference frame.
+
+STYLE AND TECHNICAL LIMITATIONS:
+- Design the sprite DIRECTLY at the target pixel scale. Do not create a detailed
+  illustration and then convert it into pixel art.
+- Do not simulate pixel art at a higher resolution.
+- Large, clearly visible pixels; hard pixel edges; no anti-aliasing, no smooth
+  edges, no gradients, no soft shadows and no subpixel detail.
+- Very limited, discrete color palette. No photographic color variation and no
+  colors added just to create realistic lighting or depth.
+- Simple geometric pixel shapes; minimal shading and texture; simplified facial
+  features, anatomy and clothing.
+- Do not add detail that the target resolution cannot represent. If a feature
+  cannot be represented clearly, simplify it instead of adding pixels.
+- The ART STYLE defines the exact level of pixel density, complexity and
+  detail. The POSE REFERENCE only defines the layout and the poses.
+- Do not increase sprite size, canvas resolution, pixel density or color
+  complexity to accommodate the character description.
 
 CONSISTENCY RULES:
-- Keep the same character design, proportions, palette, outline thickness and
-  pixel density in every frame.
-- Preserve the pose and silhouette of each reference frame as closely as possible.
-  Each frame must match its corresponding reference pose.
-- Show the full body without cropping the feet, hands or head.
-- Keep the character centered and at the same relative scale in every frame.
-- Isolate the sprite on a completely flat, uniform background. If the model
-  supports transparency, use a transparent background; otherwise use a single
-  solid chroma-key color (pure magenta #FF00FF) with no shadows, gradients,
-  texture or scenery.
+- Every frame must depict the same character with the same clothing, hair,
+  accessories, palette, outlines and proportions.
+- Preserve each reference pose and silhouette as closely as possible.
+- Keep the character inside the same general area occupied by the reference
+  character in each frame.
+- Isolate the sprite on the same background/transparency characteristic as the
+  reference. If a solid background is needed, use a single flat chroma-key
+  magenta #FF00FF with no shadows, gradients, texture or scenery.
 - No text, no watermark, no UI, no speech bubbles, no extra characters and no
   background objects.
-- Pixel art only: hard edges, no anti-aliasing, no blur, no noise and no 3D
-  rendering."""
+
+FRAME COUNT:
+- Output EXACTLY {frame_count} frame(s).
+- When {frame_count} is greater than 1, the result MUST be one sprite sheet
+  with {frame_count} frames. Returning a single frame is wrong.
+
+MOST IMPORTANT RULE:
+- The target style's pixel limitations are more important than adding detail
+  from the character description.
+- NEVER increase resolution, sprite size, pixel density, color complexity or
+  visual detail to accommodate the description.
+- If there is not enough resolution to represent a characteristic, simplify it.
+- The result must look like an authentic low-resolution game sprite sheet, not
+  a modern high-resolution pixel-art illustration."""
 
 
 def _correction_body(
@@ -899,6 +951,19 @@ def _correction_body(
         if pose_count
         else ""
     )
+    if request.style_images:
+        style_rule = (
+            "- The ART STYLE REFERENCE image defines the rendering style "
+            "(pixel density, palette, outlines, shading and detail level). Do not "
+            "copy its character design or pose.\n"
+        )
+    elif request.art_style.strip():
+        style_rule = (
+            "- The ART STYLE DESCRIPTION defines the rendering style; respect its "
+            "pixel density, palette and level of detail.\n"
+        )
+    else:
+        style_rule = ""
 
     sheet_rule = (
         f"- The PREVIOUS GENERATED input is a sprite sheet with {frame_count} "
@@ -919,7 +984,7 @@ CORRECTION REQUESTED BY THE USER (may be written in Portuguese; follow it exactl
 
 RULES:
 - The PREVIOUS GENERATED image(s) are the source of truth for character identity, palette, proportions, outline thickness, pixel density, canvas size and background.
-{pose_rule}{sheet_rule}- Change ONLY what the correction explicitly requests. Preserve everything else as close to pixel-for-pixel as possible.
+{pose_rule}{style_rule}{sheet_rule}- Change ONLY what the correction explicitly requests. Preserve everything else as close to pixel-for-pixel as possible.
 - Do not redesign, re-pose, re-frame, re-color or add elements that were not requested.
 - Keep the sprite isolated on the same flat, uniform background. Do not add scenery, shadows, text, watermarks or extra panels.
 - Pixel art only: hard edges, no anti-aliasing, no blur and no noise.
@@ -939,6 +1004,10 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
     pose_images = [
         _normalize_input_image(value, "reference_images", index)
         for index, value in enumerate(request.reference_images)
+    ]
+    style_images = [
+        _normalize_input_image(value, "style_images", index)
+        for index, value in enumerate(request.style_images)
     ]
     previous_images = [
         _normalize_input_image(value, "previous_generated_images", index)
@@ -1021,6 +1090,18 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
                 )
             visuals.append(VisualInput(label=label, role="pose", image=image))
 
+        for index, image in enumerate(style_images):
+            if len(style_images) == 1:
+                label = (
+                    "ART STYLE REFERENCE (rendering style only; do not copy its "
+                    "character design or pose)"
+                )
+            else:
+                label = (
+                    f"ART STYLE REFERENCE {index + 1} of {len(style_images)}"
+                )
+            visuals.append(VisualInput(label=label, role="style", image=image))
+
         if not visuals:
             raise ApiError(
                 400,
@@ -1057,6 +1138,16 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
         else:
             label = f"POSE REFERENCE frame {index + 1} of {len(pose_images)}"
         visuals.append(VisualInput(label=label, role="pose", image=image))
+
+    for index, image in enumerate(style_images):
+        if len(style_images) == 1:
+            label = (
+                "ART STYLE REFERENCE (rendering style only; do not copy its "
+                "character design or pose)"
+            )
+        else:
+            label = f"ART STYLE REFERENCE {index + 1} of {len(style_images)}"
+        visuals.append(VisualInput(label=label, role="style", image=image))
 
     # O frontend informa quantas células a grade da referência tem. Sem esse
     # campo (clientes antigos), assume 1 frame por imagem enviada.

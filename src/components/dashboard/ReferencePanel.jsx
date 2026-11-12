@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import {
   Film,
   Image as ImageIcon,
+  ImagePlus,
   Palette,
   RefreshCw,
   Sparkles,
@@ -27,6 +28,9 @@ import { Card, Field, PrimaryButton, inputClass } from './ui'
  *   onAppearanceChange: (value: string) => void,
  *   artStyle: string,
  *   onArtStyleChange: (value: string) => void,
+ *   styleReference: { dataUrl: string, name: string } | null,
+ *   onStyleFileSelected: (file: File) => void,
+ *   onClearStyleReference: () => void,
  *   onGenerate: () => void,
  *   generating: boolean,
  *   elapsed: number,
@@ -42,6 +46,9 @@ export default function ReferencePanel({
   onAppearanceChange,
   artStyle,
   onArtStyleChange,
+  styleReference,
+  onStyleFileSelected,
+  onClearStyleReference,
   onGenerate,
   generating,
   elapsed,
@@ -49,6 +56,7 @@ export default function ReferencePanel({
   generateHint,
 }) {
   const inputRef = useRef(null)
+  const styleInputRef = useRef(null)
   const [dragging, setDragging] = useState(false)
 
   function openPicker() {
@@ -190,6 +198,61 @@ export default function ReferencePanel({
               placeholder="Ex.: pixel art 16-bit, paleta limitada, contorno nítido, fundo transparente"
               className={`${inputClass} resize-y`}
             />
+
+            <input
+              ref={styleInputRef}
+              type="file"
+              accept="image/png,image/webp,image/gif,image/jpeg,image/*"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0]
+                if (file) onStyleFileSelected(file)
+                event.target.value = ''
+              }}
+            />
+
+            <div className="mt-2">
+              {styleReference ? (
+                <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 p-1.5">
+                  <div className="bg-checkerboard grid h-10 w-12 shrink-0 place-items-center overflow-hidden rounded border border-white/10">
+                    <img
+                      src={styleReference.dataUrl}
+                      alt="Referência de estilo de arte"
+                      className="pixelated max-h-10 max-w-12 object-contain"
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[11px] font-medium text-slate-200">
+                      {styleReference.name}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      Referência de estilo
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onClearStyleReference}
+                    className="rounded p-1 text-slate-400 transition hover:bg-white/5 hover:text-rose-300"
+                    aria-label="Remover referência de estilo"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => styleInputRef.current?.click()}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-white/15 bg-black/15 px-2 py-2 text-[11px] font-medium text-slate-400 transition hover:border-cyan-400/40 hover:bg-white/[0.03] hover:text-cyan-200"
+                >
+                  <ImagePlus className="size-3.5" />
+                  Adicionar imagem de estilo (opcional)
+                </button>
+              )}
+              <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+                Sem texto e sem imagem de estilo, a referência de movimento
+                também define o estilo.
+              </p>
+            </div>
           </Field>
         </div>
       </Card>
