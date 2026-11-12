@@ -17,7 +17,8 @@
  * sem CORS "contaminam" o canvas; nesse caso lançamos `TAINTED_CANVAS`.
  */
 
-import { GIFEncoder, applyPalette, quantize } from 'gifenc'
+import gifenc from 'gifenc'
+const { GIFEncoder, applyPalette, quantize } = gifenc
 
 /** @typedef {string | Blob | File | HTMLImageElement | HTMLCanvasElement | ImageBitmap} ImageSource */
 
