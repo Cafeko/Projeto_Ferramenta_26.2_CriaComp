@@ -39,7 +39,7 @@ export const PROVIDERS = [
     shortLabel: 'Replicate',
     keyUrl: 'https://replicate.com/account/api-tokens',
     keyLabel: 'Replicate',
-    hint: 'Nano Banana, Flux Kontext e outros.',
+    hint: 'Nano Banana 2.1, Flux Kontext e outros.',
   },
 ]
 

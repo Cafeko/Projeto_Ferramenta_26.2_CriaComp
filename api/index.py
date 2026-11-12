@@ -1669,6 +1669,14 @@ class OpenRouterAdapter(ProviderAdapter):
 
 _REPLICATE_FALLBACK = [
     ModelOption(
+        id="google/nano-banana-2.1",
+        name="Google Nano Banana 2.1",
+        description=(
+            "Geração e edição de imagens com até 14 referências, texto nítido "
+            "e saída de 1K a 4K."
+        ),
+    ),
+    ModelOption(
         id="google/nano-banana",
         name="Google Nano Banana",
         description="Geração e edição de imagens com referências visuais.",
@@ -1884,7 +1892,7 @@ def _replicate_build_input(
         raise ApiError(
             400,
             "Este modelo do Replicate não aceita imagens de referência. "
-            "Escolha um modelo de edição (por exemplo, google/nano-banana ou "
+            "Escolha um modelo de edição (por exemplo, google/nano-banana-2.1 ou "
             "black-forest-labs/flux-kontext-pro).",
             code="model_without_image_input",
             provider="replicate",
@@ -1953,7 +1961,7 @@ def _replicate_build_input(
             )
 
     _replicate_set_supported(inputs, props, "output_format", "png")
-    _replicate_set_supported(inputs, props, "aspect_ratio", "1:1")
+    _replicate_set_supported(inputs, props, "aspect_ratio", plan.aspect)
     _replicate_set_supported(inputs, props, "num_outputs", 1)
     _replicate_set_supported(inputs, props, "num_images", 1)
     return inputs
