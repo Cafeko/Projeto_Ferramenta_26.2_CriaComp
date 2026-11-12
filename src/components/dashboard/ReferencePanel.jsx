@@ -58,6 +58,7 @@ export default function ReferencePanel({
   const inputRef = useRef(null)
   const styleInputRef = useRef(null)
   const [dragging, setDragging] = useState(false)
+  const [styleDragging, setStyleDragging] = useState(false)
 
   function openPicker() {
     inputRef.current?.click()
@@ -68,6 +69,13 @@ export default function ReferencePanel({
     setDragging(false)
     const file = event.dataTransfer?.files?.[0]
     if (file) onFileSelected(file)
+  }
+
+  function handleStyleDrop(event) {
+    event.preventDefault()
+    setStyleDragging(false)
+    const file = event.dataTransfer?.files?.[0]
+    if (file) onStyleFileSelected(file)
   }
 
   return (
@@ -212,42 +220,76 @@ export default function ReferencePanel({
             />
 
             <div className="mt-2">
-              {styleReference ? (
-                <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 p-1.5">
-                  <div className="bg-checkerboard grid h-10 w-12 shrink-0 place-items-center overflow-hidden rounded border border-white/10">
-                    <img
-                      src={styleReference.dataUrl}
-                      alt="Referência de estilo de arte"
-                      className="pixelated max-h-10 max-w-12 object-contain"
-                    />
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => styleInputRef.current?.click()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    styleInputRef.current?.click()
+                  }
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault()
+                  setStyleDragging(true)
+                }}
+                onDragLeave={() => setStyleDragging(false)}
+                onDrop={handleStyleDrop}
+                className={`cursor-pointer rounded-lg border transition focus-visible:ring-2 focus-visible:ring-cyan-400/40 focus-visible:outline-none ${
+                  styleDragging
+                    ? 'border-cyan-400/70 bg-cyan-400/10'
+                    : 'border-dashed border-white/15 bg-black/15 hover:border-cyan-400/40 hover:bg-white/[0.03]'
+                }`}
+              >
+                {styleReference ? (
+                  <div className="flex items-center gap-2 p-1.5">
+                    <div className="bg-checkerboard grid h-10 w-12 shrink-0 place-items-center overflow-hidden rounded border border-white/10">
+                      <img
+                        src={styleReference.dataUrl}
+                        alt="Referência de estilo de arte"
+                        className="pixelated max-h-10 max-w-12 object-contain"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[11px] font-medium text-slate-200">
+                        {styleReference.name}
+                      </p>
+                      <p
+                        className={`text-[10px] ${
+                          styleDragging ? 'text-cyan-300' : 'text-slate-500'
+                        }`}
+                      >
+                        {styleDragging
+                          ? 'Solte para substituir'
+                          : 'Referência de estilo — clique ou arraste para trocar'}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onClearStyleReference()
+                      }}
+                      className="rounded p-1 text-slate-400 transition hover:bg-white/5 hover:text-rose-300"
+                      aria-label="Remover referência de estilo"
+                    >
+                      <X className="size-3.5" />
+                    </button>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[11px] font-medium text-slate-200">
-                      {styleReference.name}
-                    </p>
-                    <p className="text-[10px] text-slate-500">
-                      Referência de estilo
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={onClearStyleReference}
-                    className="rounded p-1 text-slate-400 transition hover:bg-white/5 hover:text-rose-300"
-                    aria-label="Remover referência de estilo"
+                ) : (
+                  <div
+                    className={`flex w-full items-center justify-center gap-1.5 px-2 py-2 text-[11px] font-medium ${
+                      styleDragging ? 'text-cyan-200' : 'text-slate-400'
+                    }`}
                   >
-                    <X className="size-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => styleInputRef.current?.click()}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-white/15 bg-black/15 px-2 py-2 text-[11px] font-medium text-slate-400 transition hover:border-cyan-400/40 hover:bg-white/[0.03] hover:text-cyan-200"
-                >
-                  <ImagePlus className="size-3.5" />
-                  Adicionar imagem de estilo (opcional)
-                </button>
-              )}
+                    <ImagePlus className="size-3.5" />
+                    {styleDragging
+                      ? 'Solte a imagem aqui'
+                      : 'Arraste uma imagem de estilo ou clique (opcional)'}
+                  </div>
+                )}
+              </div>
               <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
                 Sem texto e sem imagem de estilo, a referência de movimento
                 também define o estilo.

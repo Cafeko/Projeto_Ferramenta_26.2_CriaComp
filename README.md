@@ -288,9 +288,10 @@ duas colunas em tablets):
   guardado em `src/utils/presets.js` para uso futuro.
 - **Prompt:** aparência do personagem e estilo de arte. O estilo pode ser
   descrito em texto e/ou enviado como **imagem de referência de estilo**
-  independente. A imagem de pose define apenas poses/posições; a de estilo
-  define apenas a aparência visual. Sem texto e sem imagem de estilo, a
-  referência de movimento também vale como estilo.
+  independente (clique ou arraste o arquivo para a área). A imagem de pose
+  define apenas poses/posições; a de estilo define apenas a aparência visual.
+  Sem texto e sem imagem de estilo, a referência de movimento também vale como
+  estilo.
 - **`[ GERAR NOVO SPRITESHEET ]`** limpa o histórico e gera tudo do zero,
   enviando a referência inteira e o número real de frames para a IA.
 
