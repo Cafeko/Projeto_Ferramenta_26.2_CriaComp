@@ -299,7 +299,10 @@ duas colunas em tablets):
   sincronizado, controle de **FPS** e **Play/Pause**.
 - Filmstrip com os frames PNG numerados e o botão **`[ Editar Frame ]`** em cada
   um. A janela de edição se ajusta à tela (com rolagem) e a correção individual
-  envia só aquele frame; ao aplicar, a spritesheet é remontada automaticamente.
+  envia só aquele frame. A correção é guardada como **candidata**: a janela
+  mostra o frame atual e o corrigido e só substitui quando você escolhe
+  `[ USAR FRAME CORRIGIDO ]` (ou descarta com `[ MANTER FRAME ATUAL ]`). Depois
+  de aplicar, a spritesheet é remontada automaticamente.
 
 ### Coluna direita — correção e exportação
 - **Correção em lote:** instrução textual aplicada à spritesheet inteira, enviada

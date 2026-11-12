@@ -232,6 +232,9 @@ export default function MainDashboard() {
   const [modalFrameIndex, setModalFrameIndex] = useState(null)
   const [modalPrompt, setModalPrompt] = useState('')
   const [modalPreviewFrame, setModalPreviewFrame] = useState(null)
+  // Correção individual aguardando escolha: fica guardada sem substituir o
+  // frame atual até o usuário decidir qual dos dois manter.
+  const [modalCandidateFrame, setModalCandidateFrame] = useState(null)
   const [modalApplyingSingle, setModalApplyingSingle] = useState(false)
   const [modalApplyingAll, setModalApplyingAll] = useState(false)
 
@@ -377,6 +380,8 @@ export default function MainDashboard() {
     setCorrectionPrompt('')
     setCurrentFrameIndex(0)
     setModalOpen(false)
+    setModalCandidateFrame(null)
+    setModalPreviewFrame(null)
   }, [provider, modelId, appearance, artStyle, reference, styleReference])
 
   /* ------------------------ Cronômetro ---------------------------------- */
@@ -605,6 +610,8 @@ export default function MainDashboard() {
       setCorrectionPrompt('')
       setCurrentFrameIndex(0)
       setModalOpen(false)
+      setModalCandidateFrame(null)
+      setModalPreviewFrame(null)
 
       let result
       try {
@@ -708,6 +715,7 @@ export default function MainDashboard() {
     setModalFrameIndex(index)
     setModalPrompt('')
     setModalPreviewFrame(null)
+    setModalCandidateFrame(null)
   }, [])
 
   /**
@@ -939,17 +947,15 @@ export default function MainDashboard() {
       }
 
       // Normaliza a resolução da resposta para o tamanho do frame original.
+      // NÃO substitui ainda: guarda a correção como candidata para o usuário
+      // escolher entre o frame atual e o corrigido.
       const corrected = await resizeFrameToMatch(result.images[0], frames[index])
-      const nextFrames = frames.map((frame, position) =>
-        position === index ? corrected : frame,
-      )
-      setFrames(nextFrames)
-      await recompileGeneratedSheet(nextFrames)
+      setModalCandidateFrame(corrected)
       setModalPreviewFrame(corrected)
       setModalPrompt('')
       pushToast(
-        `Frame #${index + 1} corrigido sem alterar os demais.`,
-        'success',
+        `Correção do frame #${index + 1} pronta. Escolha qual frame manter.`,
+        'info',
       )
     } catch (error) {
       const message = describeApiError(error)
@@ -975,6 +981,34 @@ export default function MainDashboard() {
     referenceFrames,
     styleReference,
   ])
+
+  /* --------------------- Modal: escolha do frame final --------------------- */
+  const handleModalUseCandidate = useCallback(async () => {
+    if (!modalCandidateFrame || modalFrameIndex === null) return
+    const index = modalFrameIndex
+    const nextFrames = frames.map((frame, position) =>
+      position === index ? modalCandidateFrame : frame,
+    )
+    setFrames(nextFrames)
+    setModalCandidateFrame(null)
+    setModalPreviewFrame(null)
+    setModalOpen(false)
+    await recompileGeneratedSheet(nextFrames)
+    pushToast(`Frame #${index + 1} atualizado com a correção.`, 'success')
+  }, [
+    frames,
+    modalCandidateFrame,
+    modalFrameIndex,
+    pushToast,
+    recompileGeneratedSheet,
+  ])
+
+  const handleModalDiscardCandidate = useCallback(() => {
+    setModalCandidateFrame(null)
+    setModalPreviewFrame(null)
+    setModalOpen(false)
+    pushToast('Frame atual mantido (correção descartada).', 'info')
+  }, [pushToast])
 
   /* --------------------------- Modal: correção em lote -------------------------- */
   const handleModalApplyAll = useCallback(async () => {
@@ -1071,6 +1105,7 @@ export default function MainDashboard() {
       }
 
       setModalPrompt('')
+      setModalCandidateFrame(null)
       pushToast(
         `${frames.length} frame${frames.length === 1 ? '' : 's'} corrigido${frames.length === 1 ? '' : 's'} em lote.`,
         'success',
@@ -1251,15 +1286,20 @@ export default function MainDashboard() {
         onClose={() => {
           setModalOpen(false)
           setCorrectionFrame(null)
+          setModalCandidateFrame(null)
+          setModalPreviewFrame(null)
         }}
         frameIndex={modalFrameIndex ?? 0}
         originalFrame={referenceFrames[modalFrameIndex ?? 0] ?? ''}
         currentFrame={frames[modalFrameIndex ?? 0] ?? ''}
         previewFrame={modalPreviewFrame}
+        candidateFrame={modalCandidateFrame}
         correctionPrompt={modalPrompt}
         onPromptChange={setModalPrompt}
         onApplySingle={handleModalApplySingle}
         onApplyAll={handleModalApplyAll}
+        onUseCandidate={handleModalUseCandidate}
+        onDiscardCandidate={handleModalDiscardCandidate}
         applyingSingle={modalApplyingSingle}
         applyingAll={modalApplyingAll}
       />

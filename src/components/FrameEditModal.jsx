@@ -27,10 +27,13 @@ import { Alert, Card, PrimaryButton, SecondaryButton, inputClass } from './dashb
  *   originalFrame: string,
  *   currentFrame: string,
  *   previewFrame: string | null,
+ *   candidateFrame: string | null,
  *   correctionPrompt: string,
  *   onPromptChange: (value: string) => void,
  *   onApplySingle: () => void,
  *   onApplyAll: () => void,
+ *   onUseCandidate: () => void,
+ *   onDiscardCandidate: () => void,
  *   applyingSingle: boolean,
  *   applyingAll: boolean,
  * }} props
@@ -42,16 +45,20 @@ export default function FrameEditModal({
   originalFrame,
   currentFrame,
   previewFrame,
+  candidateFrame,
   correctionPrompt,
   onPromptChange,
   onApplySingle,
   onApplyAll,
+  onUseCandidate,
+  onDiscardCandidate,
   applyingSingle,
   applyingAll,
 }) {
   if (!open) return null
 
   const hasPreview = Boolean(previewFrame)
+  const hasCandidate = Boolean(candidateFrame)
   const isCorrecting = applyingSingle || applyingAll
 
   return (
@@ -158,6 +165,11 @@ export default function FrameEditModal({
                     </p>
                   </div>
                 )}
+                {hasCandidate && (
+                  <span className="absolute top-1 right-1 z-10 rounded bg-amber-400/90 px-1.5 py-0.5 text-[9px] font-bold text-slate-950">
+                    CANDIDATO
+                  </span>
+                )}
                 {isCorrecting && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-canvas/70 backdrop-blur-sm z-10">
                     <Loader2 className="size-5 animate-spin text-cyan-300" />
@@ -170,6 +182,38 @@ export default function FrameEditModal({
             </div>
           </div>
         </Card>
+
+        {hasCandidate && (
+          <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-400/[0.07] p-3">
+            <p className="text-[11px] font-semibold text-amber-200">
+              Correção pronta — escolha qual frame manter:
+            </p>
+            <p className="mt-0.5 text-[10px] text-slate-400">
+              O frame atual ainda não foi alterado. Nada é substituído até você
+              escolher.
+            </p>
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <SecondaryButton
+                onClick={onDiscardCandidate}
+                icon={X}
+                className="justify-center"
+              >
+                <span className="font-mono text-[11px] leading-none">
+                  [ MANTER FRAME ATUAL ]
+                </span>
+              </SecondaryButton>
+              <PrimaryButton
+                onClick={onUseCandidate}
+                icon={CheckCircle2}
+                className="justify-center"
+              >
+                <span className="font-mono text-[11px] leading-none">
+                  [ USAR FRAME CORRIGIDO ]
+                </span>
+              </PrimaryButton>
+            </div>
+          </div>
+        )}
 
         {/* ------------------------------------ Instrução de Correção ------------------------------------ */}
         <Card
@@ -230,8 +274,8 @@ export default function FrameEditModal({
 
         <p className="mt-4 flex items-center gap-1.5 text-[10px] text-slate-500">
           <CheckCircle2 className="size-3" />
-          O frame corrigido substitui o PNG correspondente e a spritesheet é
-          remontada automaticamente para exportação ou novas correções.
+          A correção individual fica guardada como candidata. Ao escolher “usar
+          frame corrigido”, a spritesheet é remontada automaticamente.
         </p>
         </div>
       </div>
