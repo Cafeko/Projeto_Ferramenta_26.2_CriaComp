@@ -540,46 +540,69 @@ export default function MainDashboard() {
   }, [apiKey, modelId, referenceFrames, appearance, artStyle])
 
   const handleGenerate = useCallback(async () => {
-    if (generating) return
-    if (!canGenerate) {
-      pushToast(generateHint, 'warning')
-      return
-    }
-
-    const referenceImages = referenceFrames.slice(0, MAX_REFERENCE_FRAMES)
     try {
-      ensurePayloadSize(referenceImages)
-    } catch (error) {
-      pushToast(describeApiError(error), 'error')
-      return
-    }
+      if (generating) return
+      if (!canGenerate) {
+        pushToast(generateHint, 'warning')
+        return
+      }
 
-    // O botão de gerar sempre começa um trabalho novo: limpa o histórico.
-    setGenerating(true)
-    setGenerationError('')
-    setCorrectionError('')
-    setFrames([])
-    setCorrectionFrame(null)
-    setCorrectionPrompt('')
-    setCurrentFrameIndex(0)
-    setModalOpen(false)
+      const referenceImages = Array.isArray(referenceFrames)
+        ? referenceFrames.slice(0, MAX_REFERENCE_FRAMES)
+        : []
+      try {
+        ensurePayloadSize(referenceImages)
+      } catch (error) {
+        pushToast(describeApiError(error), 'error')
+        return
+      }
 
-    try {
-      const result = await generateSprites({
-        provider,
-        apiKey: apiKey.trim(),
-        modelId,
-        referenceImages,
-        characterAppearance: appearance.trim(),
-        artStyle: artStyle.trim(),
-      })
+      // O botão de gerar sempre começa um trabalho novo: limpa o histórico.
+      setGenerating(true)
+      setGenerationError('')
+      setCorrectionError('')
+      setFrames([])
+      setCorrectionFrame(null)
+      setCorrectionPrompt('')
+      setCurrentFrameIndex(0)
+      setModalOpen(false)
+
+      let result
+      try {
+        result = await generateSprites({
+          provider,
+          apiKey: apiKey.trim(),
+          modelId,
+          referenceImages,
+          characterAppearance: appearance.trim(),
+          artStyle: artStyle.trim(),
+        })
+      } catch (apiError) {
+        const message = describeApiError(apiError)
+        setGenerationError(message)
+        pushToast(message, 'error')
+        console.error('[generate api]', apiError)
+        setGenerating(false)
+        setFrames([])
+        return
+      }
 
       if (!result || !Array.isArray(result.images)) {
-        throw new Error('A API não retornou um resultado válido.')
+        setGenerating(false)
+        setFrames([])
+        const message = 'A API não retornou um resultado válido.'
+        setGenerationError(message)
+        pushToast(message, 'error')
+        return
       }
 
       if (result.images.length === 0) {
-        throw new Error('A IA não retornou nenhuma imagem. Tente outro modelo ou prompt.')
+        setGenerating(false)
+        setFrames([])
+        const message = 'A IA não retornou nenhuma imagem. Tente outro modelo ou prompt.'
+        setGenerationError(message)
+        pushToast(message, 'error')
+        return
       }
 
       // Se a IA devolveu um único sprite sheet (várias poses em uma imagem),
@@ -603,10 +626,11 @@ export default function MainDashboard() {
         }
       }
 
-      setFrames(Array.isArray(finalFrames) ? finalFrames : [])
-      setExportColumns(String(Math.min(4, finalFrames.length)))
+      const safeFrames = Array.isArray(finalFrames) ? finalFrames : []
+      setFrames(safeFrames)
+      setExportColumns(String(Math.min(4, safeFrames.length)))
       pushToast(
-        `${finalFrames.length} frame${finalFrames.length === 1 ? '' : 's'} gerado${finalFrames.length === 1 ? '' : 's'} com sucesso.`,
+        `${safeFrames.length} frame${safeFrames.length === 1 ? '' : 's'} gerado${safeFrames.length === 1 ? '' : 's'} com sucesso.`,
         'success',
       )
     } catch (error) {
@@ -614,6 +638,7 @@ export default function MainDashboard() {
       setGenerationError(message)
       pushToast(message, 'error')
       console.error('[generate]', error)
+      setGenerating(false)
       setFrames([])
     } finally {
       setGenerating(false)
