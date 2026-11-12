@@ -18,7 +18,7 @@ import { Alert, Card, Pill } from './ui'
  * @param {{
  *   label: string,
  *   accent: 'slate' | 'cyan',
- *   frame: string | null,
+ *   frame: string | null | undefined,
  *   frameIndex: number,
  *   totalFrames: number,
  *   loading: boolean,
@@ -32,8 +32,8 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
       ? 'border-cyan-400/25 bg-cyan-400/[0.04]'
       : 'border-white/10 bg-white/[0.02]'
 
-  const safeTotal = totalFrames > 0 ? totalFrames : 1
-  const safeIndex = frameIndex % safeTotal
+  const safeTotal = Math.max(1, Math.floor(totalFrames || 0))
+  const safeIndex = Math.max(0, Math.min(Math.floor(frameIndex || 0), safeTotal - 1))
 
   return (
     <div className={`rounded-xl border p-2.5 ${accentUi}`}>
@@ -54,7 +54,7 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
       <div className="bg-checkerboard relative grid h-64 place-items-center overflow-hidden rounded-lg border border-white/5 sm:h-72">
         {frame ? (
           <img
-            src={frame}
+            src={String(frame)}
             alt={label}
             className="pixelated max-h-full max-w-full object-contain"
           />
@@ -78,22 +78,6 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
 
 /**
  * Coluna central: frames lado a lado com navegação frame a frame.
- *
- * @param {{
- *   referenceFrames: string[],
- *   frames: string[],
- *   fps: number,
- *   onFpsChange: (value: number) => void,
- *   viewMode: 'loop' | 'frame-by-frame',
- *   onViewModeChange: (value: 'loop' | 'frame-by-frame') => void,
- *   currentFrameIndex: number,
- *   onCurrentFrameIndexChange: (value: number) => void,
- *   generating: boolean,
- *   referenceBusy: boolean,
- *   generationError: string,
- *   onEditFrame: (index: number) => void,
- *   editingFrame: number | null,
- * }} props
  */
 export default function PreviewPanel({
   referenceFrames,
@@ -110,12 +94,20 @@ export default function PreviewPanel({
   onEditFrame,
   editingFrame,
 }) {
+  // Garantir que os arrays existem e são arrays
   const refs = Array.isArray(referenceFrames) ? referenceFrames : []
   const gens = Array.isArray(frames) ? frames : []
   const totalFrames = Math.max(refs.length, gens.length)
-  const safeIndex = totalFrames > 0 ? Math.max(0, Math.min(currentFrameIndex, totalFrames - 1)) : 0
+  const safeTotal = Math.max(1, totalFrames)
+  const safeIndex = totalFrames > 0 ? Math.max(0, Math.min(Math.floor(currentFrameIndex || 0), totalFrames - 1)) : 0
   const hasFrames = gens.length > 0
   const hasReference = refs.length > 0
+
+  // Se o índice está fora do range, corrigir
+  if (totalFrames > 0 && (currentFrameIndex == null || currentFrameIndex < 0 || currentFrameIndex >= totalFrames)) {
+    // Não chamar onCurrentFrameIndexChange aqui para evitar loop infinito;
+    // o safeIndex é usado localmente para renderização.
+  }
 
   return (
     <div className="space-y-4">
@@ -163,17 +155,17 @@ export default function PreviewPanel({
             <input
               type="number"
               min={1}
-              max={Math.max(1, totalFrames)}
+              max={safeTotal}
               value={safeIndex + 1}
               onChange={(event) => {
                 const v = Number.parseInt(event.target.value, 10)
-                if (!Number.isNaN(v) && v >= 1 && v <= Math.max(1, totalFrames)) {
+                if (!Number.isNaN(v) && v >= 1 && v <= safeTotal) {
                   onCurrentFrameIndexChange(v - 1)
                 }
               }}
               className="w-12 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-slate-100 focus:border-cyan-400/60 focus:outline-none"
             />
-            <span className="text-[11px] text-slate-500">de {Math.max(1, totalFrames)}</span>
+            <span className="text-[11px] text-slate-500">de {safeTotal}</span>
           </div>
 
           <div className="ml-auto flex items-center gap-2">
@@ -197,7 +189,7 @@ export default function PreviewPanel({
           <FrameView
             label="Original"
             accent="slate"
-            frame={hasReference ? refs[safeIndex % refs.length] : null}
+            frame={hasReference && refs.length > 0 ? refs[safeIndex % refs.length] : null}
             frameIndex={safeIndex}
             totalFrames={refs.length}
             loading={referenceBusy}
@@ -207,7 +199,7 @@ export default function PreviewPanel({
           <FrameView
             label="Novo frame"
             accent="cyan"
-            frame={hasFrames ? gens[safeIndex % gens.length] : null}
+            frame={hasFrames && gens.length > 0 ? gens[safeIndex % gens.length] : null}
             frameIndex={safeIndex}
             totalFrames={gens.length}
             loading={generating}
@@ -248,9 +240,10 @@ export default function PreviewPanel({
             {gens.map((frame, index) => {
               const isCurrent = index === safeIndex
               const isEditing = editingFrame === index
+              const frameKey = String(frame ?? '').slice(-24)
               return (
                 <figure
-                  key={`${index}-${String(frame).slice(-24)}`}
+                  key={`${index}-${frameKey}`}
                   className={`overflow-hidden rounded-lg border bg-black/20 transition ${
                     isCurrent
                       ? 'border-cyan-400/70 shadow-md shadow-cyan-950/50 ring-1 ring-cyan-400'
@@ -261,7 +254,7 @@ export default function PreviewPanel({
                 >
                   <div className="bg-checkerboard relative grid aspect-square place-items-center p-1.5 cursor-pointer" onClick={() => onCurrentFrameIndexChange(index)}>
                     <img
-                      src={frame}
+                      src={String(frame)}
                       alt={`Frame ${index + 1}`}
                       className="pixelated max-h-full max-w-full object-contain"
                     />
