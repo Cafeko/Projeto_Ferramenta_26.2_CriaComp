@@ -122,38 +122,65 @@ function readImageFile(file) {
  * @param {number} height
  * @returns {{ columns: number, rows: number, autoSlice: boolean }}
  */
+/**
+ * Tenta adivinhar a grade de um spritesheet a partir das dimensões.
+ *
+ * Estratégia: prioriza células QUADRADAS (sprites são tipicamente
+ * quadrados: 16×16, 24×24, 32×32, 48×48, 64×64) e, quando há várias
+ * opções válidas, escolhe a que resulta em MENOS frames (mais
+ * conservador — evita fatiar demais uma imagem que pode ser um único
+ * sprite grande).
+ *
+ * @param {number} width
+ * @param {number} height
+ * @returns {{ columns: number, rows: number, autoSlice: boolean }}
+ */
 function guessGrid(width, height) {
-  const largestSide = Math.max(width, height)
+  /** @type {Array<{ columns: number, rows: number, total: number, score: number }>} */
+  const candidates = []
 
-  // Spritesheets quadradas/retangulares costumam usar células de 32 ou 64 px.
-  // Só tenta fatiar quando a imagem é grande o suficiente para não ser um
-  // único sprite (ex.: 64x64 sozinho não deve virar uma grade 2x2).
-  if (largestSide >= 96) {
-    for (const cell of [32, 64, 48, 16, 96, 128]) {
-      if (width % cell !== 0 || height % cell !== 0) continue
-      const columns = width / cell
-      const rows = height / cell
+  // 1) Tentar células quadradas padrão (mais provável para sprites)
+  for (const cell of [32, 24, 16, 48, 64, 8, 12, 20]) {
+    if (width % cell !== 0 || height % cell !== 0) continue
+    const columns = width / cell
+    const rows = height / cell
+    const total = columns * rows
+    if (total >= 2 && total <= 32) {
+      // Quanto mais próximo de quadrado (columns ≈ rows), melhor.
+      // Quanto menos frames, mais conservador.
+      const score = 100 - Math.abs(columns - rows) * 5 - total * 2
+      candidates.push({ columns, rows, total, score })
+    }
+  }
+
+  // 2) Se não encontrou célula quadrada, tentar retangular com lados múltiplos de 4
+  for (let cellW = 8; cellW <= width; cellW += 4) {
+    if (width % cellW !== 0) continue
+    for (let cellH = 8; cellH <= height; cellH += 4) {
+      if (height % cellH !== 0) continue
+      const columns = width / cellW
+      const rows = height / cellH
       const total = columns * rows
-      if (total >= 2 && total <= 24) {
-        return { columns, rows, autoSlice: true }
+      if (total >= 2 && total <= 32) {
+        const aspectRatio = cellW / cellH
+        const score = 50 - Math.abs(aspectRatio - 1) * 10 - Math.abs(columns - rows) * 5 - total * 2
+        candidates.push({ columns, rows, total, score })
       }
     }
   }
 
-  // Tira horizontal (ex.: 120x30 com 4 poses).
-  if (width > height && width % height === 0) {
-    const columns = width / height
-    if (columns >= 2 && columns <= 24) {
-      return { columns, rows: 1, autoSlice: true }
-    }
+  if (candidates.length === 0) {
+    return { columns: 1, rows: 1, autoSlice: false }
   }
 
-  if (width >= height * 2) {
-    const columns = Math.min(8, Math.max(2, Math.round(width / Math.max(1, height))))
-    return { columns, rows: 1, autoSlice: true }
-  }
+  // Ordenar: menos frames primeiro (conservador), depois score maior
+  candidates.sort((a, b) => {
+    if (a.total !== b.total) return a.total - b.total
+    return b.score - a.score
+  })
 
-  return { columns: 1, rows: 1, autoSlice: false }
+  const best = candidates[0]
+  return { columns: best.columns, rows: best.rows, autoSlice: true }
 }
 
 const TOAST_STYLES = {
