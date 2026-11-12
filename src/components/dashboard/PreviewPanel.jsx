@@ -4,7 +4,7 @@ import {
   Film,
   ImageOff,
   LayoutGrid,
-  Maximize,
+  Maximize2 as Maximize,
   RefreshCw,
   Square,
 } from 'lucide-react'
@@ -32,6 +32,9 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
       ? 'border-cyan-400/25 bg-cyan-400/[0.04]'
       : 'border-white/10 bg-white/[0.02]'
 
+  const safeTotal = totalFrames > 0 ? totalFrames : 1
+  const safeIndex = frameIndex % safeTotal
+
   return (
     <div className={`rounded-xl border p-2.5 ${accentUi}`}>
       <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
@@ -44,7 +47,7 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
           {label}
         </span>
         <span className="font-mono text-[10px] text-slate-500">
-          {totalFrames > 0 ? `${(frameIndex % totalFrames) + 1}/${totalFrames}` : '—'}
+          {safeTotal > 0 ? `${safeIndex + 1}/${safeTotal}` : '—'}
         </span>
       </div>
 
@@ -107,9 +110,12 @@ export default function PreviewPanel({
   onEditFrame,
   editingFrame,
 }) {
-  const totalFrames = Math.max(referenceFrames.length, frames.length)
-  const hasFrames = frames.length > 0
-  const hasReference = referenceFrames.length > 0
+  const refs = Array.isArray(referenceFrames) ? referenceFrames : []
+  const gens = Array.isArray(frames) ? frames : []
+  const totalFrames = Math.max(refs.length, gens.length)
+  const safeIndex = totalFrames > 0 ? Math.max(0, Math.min(currentFrameIndex, totalFrames - 1)) : 0
+  const hasFrames = gens.length > 0
+  const hasReference = refs.length > 0
 
   return (
     <div className="space-y-4">
@@ -134,8 +140,8 @@ export default function PreviewPanel({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => onCurrentFrameIndexChange(Math.max(0, currentFrameIndex - 1))}
-              disabled={currentFrameIndex === 0 || totalFrames === 0}
+              onClick={() => onCurrentFrameIndexChange(Math.max(0, safeIndex - 1))}
+              disabled={safeIndex === 0 || totalFrames === 0}
               className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-semibold text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronLeft className="size-4" />
@@ -143,8 +149,8 @@ export default function PreviewPanel({
             </button>
             <button
               type="button"
-              onClick={() => onCurrentFrameIndexChange(Math.min(totalFrames - 1, currentFrameIndex + 1))}
-              disabled={currentFrameIndex >= totalFrames - 1 || totalFrames === 0}
+              onClick={() => onCurrentFrameIndexChange(Math.min(totalFrames - 1, safeIndex + 1))}
+              disabled={safeIndex >= totalFrames - 1 || totalFrames === 0}
               className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-semibold text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Próximo
@@ -158,7 +164,7 @@ export default function PreviewPanel({
               type="number"
               min={1}
               max={Math.max(1, totalFrames)}
-              value={currentFrameIndex + 1}
+              value={safeIndex + 1}
               onChange={(event) => {
                 const v = Number.parseInt(event.target.value, 10)
                 if (!Number.isNaN(v) && v >= 1 && v <= Math.max(1, totalFrames)) {
@@ -191,9 +197,9 @@ export default function PreviewPanel({
           <FrameView
             label="Original"
             accent="slate"
-            frame={referenceFrames.length > 0 ? referenceFrames[currentFrameIndex % referenceFrames.length] : null}
-            frameIndex={currentFrameIndex}
-            totalFrames={referenceFrames.length}
+            frame={hasReference ? refs[safeIndex % refs.length] : null}
+            frameIndex={safeIndex}
+            totalFrames={refs.length}
             loading={referenceBusy}
             loadingLabel="Processando referência…"
             emptyLabel="Nenhuma referência de movimento."
@@ -201,9 +207,9 @@ export default function PreviewPanel({
           <FrameView
             label="Novo frame"
             accent="cyan"
-            frame={frames.length > 0 ? frames[currentFrameIndex % frames.length] : null}
-            frameIndex={currentFrameIndex}
-            totalFrames={frames.length}
+            frame={hasFrames ? gens[safeIndex % gens.length] : null}
+            frameIndex={safeIndex}
+            totalFrames={gens.length}
             loading={generating}
             loadingLabel="Gerando frame…"
             emptyLabel="Gere um spritesheet para ver o resultado aqui."
@@ -222,7 +228,7 @@ export default function PreviewPanel({
         title="Filmstrip"
         subtitle="Todos os frames individuais"
         icon={Film}
-        badge={<Pill tone={hasFrames ? 'cyan' : 'neutral'}>{frames.length} frames</Pill>}
+        badge={<Pill tone={hasFrames ? 'cyan' : 'neutral'}>{gens.length} frames</Pill>}
         bodyClassName="p-3"
       >
         {!hasFrames ? (
@@ -239,12 +245,12 @@ export default function PreviewPanel({
           </div>
         ) : (
           <div className="grid max-h-[300px] grid-cols-[repeat(auto-fill,minmax(90px,1fr))] gap-2 overflow-y-auto pr-1">
-            {frames.map((frame, index) => {
-              const isCurrent = index === currentFrameIndex
+            {gens.map((frame, index) => {
+              const isCurrent = index === safeIndex
               const isEditing = editingFrame === index
               return (
                 <figure
-                  key={`${index}-${frame.slice(-24)}`}
+                  key={`${index}-${String(frame).slice(-24)}`}
                   className={`overflow-hidden rounded-lg border bg-black/20 transition ${
                     isCurrent
                       ? 'border-cyan-400/70 shadow-md shadow-cyan-950/50 ring-1 ring-cyan-400'
