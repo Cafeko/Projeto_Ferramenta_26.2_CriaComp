@@ -212,6 +212,8 @@ class GenerateResponse(BaseModel):
     target_frame_index: int | None = None
     images: list[str]
     mime_types: list[str]
+    # Métricas de avaliação: tempo, tokens e custo (real ou estimado).
+    usage: "UsageInfo | None" = None
 
 
 # ---------------------------------------------------------------------------
@@ -1243,6 +1245,358 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
     )
 
 
+# ---------------------------------------------------------------------------
+# Uso e custo (métricas de avaliação)
+# ---------------------------------------------------------------------------
+#
+# Cada provedor informa o consumo de um jeito diferente:
+#   - OpenRouter: devolve o custo REAL em USD (`usage.cost`).
+#   - OpenAI (GPT Image) e Gemini: devolvem tokens, mas não o valor em USD.
+#     O custo é ESTIMADO multiplicando os tokens pela tabela abaixo.
+#   - OpenAI (DALL·E): não devolve tokens; preço fixo por imagem.
+#   - Replicate: não devolve custo. Modelos oficiais cobram por imagem (tabela
+#     abaixo); os demais cobram por segundo de GPU, que a API não detalha.
+#
+# A tabela só contém preços conferidos. Modelo fora dela => custo
+# "indisponível", mas os tokens continuam sendo exibidos.
+
+PRICING_UPDATED_AT = "2026-11"
+
+
+@dataclass(frozen=True)
+class TokenPrice:
+    """Preços em USD por 1 milhão de tokens."""
+
+    text_input: float
+    image_input: float
+    image_output: float
+    text_output: float = 0.0
+
+
+@dataclass(frozen=True)
+class ImagePrice:
+    """Preço fixo em USD por imagem gerada (opcionalmente por tamanho)."""
+
+    per_image: float
+    by_size: tuple[tuple[str, float], ...] = ()
+
+    def for_size(self, size: str | None) -> float:
+        for key, value in self.by_size:
+            if key == size:
+                return value
+        return self.per_image
+
+
+_PRICING: dict[str, dict[str, TokenPrice | ImagePrice]] = {
+    "openai": {
+        "gpt-image-1": TokenPrice(5.0, 10.0, 40.0),
+        "gpt-image-1-mini": TokenPrice(2.0, 2.5, 8.0),
+        "gpt-image-1.5": TokenPrice(5.0, 8.0, 32.0, 10.0),
+        "dall-e-3": ImagePrice(
+            0.04, (("1024x1024", 0.04), ("1792x1024", 0.08), ("1024x1792", 0.08))
+        ),
+        "dall-e-2": ImagePrice(0.02),
+    },
+    "gemini": {
+        "gemini-2.5-flash-image": TokenPrice(0.30, 0.30, 30.0),
+        "gemini-3-pro-image": TokenPrice(2.0, 2.0, 120.0, 12.0),
+    },
+    "replicate": {
+        "google/nano-banana": ImagePrice(0.039),
+        "black-forest-labs/flux-kontext-pro": ImagePrice(0.04),
+        "bytedance/seedream-4": ImagePrice(0.03),
+    },
+}
+
+
+def _pricing_key(provider: str, model_id: str) -> str:
+    key = model_id.strip().lower()
+    if provider == "replicate":
+        key = key.split(":", 1)[0]
+    if provider == "gemini":
+        key = key.split("/")[-1]
+    # Snapshots datados (ex.: gpt-image-1-2025-04-15) e prévias custam igual.
+    parts = key.split("-")
+    if len(parts) > 3 and all(part.isdigit() for part in parts[-3:]):
+        key = "-".join(parts[:-3])
+    for suffix in ("-preview", "-latest"):
+        if key.endswith(suffix):
+            key = key[: -len(suffix)]
+    return key
+
+
+def _lookup_price(provider: str, model_id: str) -> TokenPrice | ImagePrice | None:
+    return _PRICING.get(provider, {}).get(_pricing_key(provider, model_id))
+
+
+def _as_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    return None
+
+
+def _as_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+@dataclass
+class ProviderUsage:
+    """Consumo de uma chamada, já normalizado entre provedores."""
+
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    input_text_tokens: int | None = None
+    input_image_tokens: int | None = None
+    output_text_tokens: int | None = None
+    output_image_tokens: int | None = None
+    image_count: int | None = None
+    # Custo informado pelo próprio provedor (só o OpenRouter faz isso).
+    provider_cost_usd: float | None = None
+    # Tempo de GPU informado pelo provedor (Replicate: metrics.predict_time).
+    compute_seconds: float | None = None
+    size: str | None = None
+
+
+@dataclass(frozen=True)
+class AdapterResult:
+    images: list[ImagePayload]
+    usage: ProviderUsage
+
+
+class UsageInfo(BaseModel):
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    image_count: int = 0
+    cost_usd: float | None = None
+    # provider = valor real informado pelo provedor; estimate = tokens/imagens
+    # multiplicados pela tabela de preços; unavailable = não dá para calcular.
+    cost_source: Literal["provider", "estimate", "unavailable"] = "unavailable"
+    cost_note: str | None = None
+    # Tempo que o backend levou falando com o provedor (inclui downloads).
+    elapsed_ms: int = 0
+    # Tempo de GPU informado pelo provedor, quando existir.
+    compute_seconds: float | None = None
+
+
+GenerateResponse.model_rebuild()
+
+
+def _estimate_cost(
+    provider: str, model_id: str, usage: ProviderUsage
+) -> tuple[float | None, str | None]:
+    price = _lookup_price(provider, model_id)
+    if price is None:
+        return None, None
+
+    if isinstance(price, ImagePrice):
+        count = usage.image_count or 0
+        if count <= 0:
+            return None, None
+        return price.for_size(usage.size) * count, f"{count} imagem(ns) × preço fixo"
+
+    if usage.input_tokens is None and usage.output_tokens is None:
+        return None, None
+
+    input_total = usage.input_tokens or 0
+    image_in = usage.input_image_tokens
+    text_in = usage.input_text_tokens
+    if image_in is None and text_in is None:
+        # Sem detalhamento: cobra tudo pela tarifa de imagem (pior caso).
+        image_in, text_in = input_total, 0
+    elif image_in is None:
+        image_in = max(0, input_total - (text_in or 0))
+    elif text_in is None:
+        text_in = max(0, input_total - image_in)
+
+    output_total = usage.output_tokens or 0
+    image_out = usage.output_image_tokens
+    text_out = usage.output_text_tokens
+    if image_out is None and text_out is None:
+        image_out, text_out = output_total, 0
+    elif image_out is None:
+        image_out = max(0, output_total - (text_out or 0))
+    elif text_out is None:
+        text_out = max(0, output_total - image_out)
+
+    cost = (
+        text_in * price.text_input
+        + image_in * price.image_input
+        + image_out * price.image_output
+        + text_out * (price.text_output or price.text_input)
+    ) / 1_000_000
+    return cost, "tokens × tabela de preços"
+
+
+def _build_usage_info(
+    provider: str,
+    model_id: str,
+    usage: ProviderUsage,
+    image_count: int,
+    elapsed_ms: int,
+) -> UsageInfo:
+    if usage.image_count is None:
+        usage.image_count = image_count
+
+    total_tokens: int | None = None
+    if usage.input_tokens is not None or usage.output_tokens is not None:
+        total_tokens = (usage.input_tokens or 0) + (usage.output_tokens or 0)
+
+    info = UsageInfo(
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        total_tokens=total_tokens,
+        image_count=image_count,
+        elapsed_ms=elapsed_ms,
+        compute_seconds=usage.compute_seconds,
+    )
+
+    if usage.provider_cost_usd is not None:
+        info.cost_usd = round(usage.provider_cost_usd, 6)
+        info.cost_source = "provider"
+        info.cost_note = f"Valor cobrado informado pelo provedor {PROVIDER_LABELS[provider]}."
+        return info
+
+    cost, how = _estimate_cost(provider, model_id, usage)
+    if cost is not None:
+        info.cost_usd = round(cost, 6)
+        info.cost_source = "estimate"
+        info.cost_note = (
+            f"Estimativa ({how}, preços de {PRICING_UPDATED_AT}). "
+            "Confira o valor final no painel do provedor."
+        )
+        return info
+
+    if provider == "replicate":
+        info.cost_note = (
+            "O Replicate não informa o custo pela API. Este modelo não está na "
+            "tabela de preços por imagem; se ele cobra por tempo de GPU, o custo "
+            "depende do hardware (veja o tempo de GPU e a página do modelo)."
+        )
+    elif total_tokens is not None:
+        info.cost_note = (
+            f"O provedor {PROVIDER_LABELS[provider]} informou os tokens, mas o preço do "
+            f"modelo '{model_id}' não está na tabela. Confira no painel do provedor."
+        )
+    else:
+        info.cost_note = (
+            f"O provedor {PROVIDER_LABELS[provider]} não informou tokens nem custo para "
+            "esta chamada."
+        )
+    return info
+
+
+def _gemini_usage(payload: Any) -> ProviderUsage:
+    usage = ProviderUsage()
+    raw = payload.get("usage") if isinstance(payload, dict) else None
+    if not isinstance(raw, dict):
+        # Formato generateContent, caso a resposta venha nele.
+        raw = payload.get("usageMetadata") if isinstance(payload, dict) else None
+        if not isinstance(raw, dict):
+            return usage
+        usage.input_tokens = _as_int(raw.get("promptTokenCount"))
+        output = _as_int(raw.get("candidatesTokenCount"))
+        thoughts = _as_int(raw.get("thoughtsTokenCount"))
+        if output is not None or thoughts is not None:
+            usage.output_tokens = (output or 0) + (thoughts or 0)
+        return usage
+
+    def by_modality(items: Any) -> dict[str, int]:
+        result: dict[str, int] = {}
+        for item in items or []:
+            if not isinstance(item, dict):
+                continue
+            modality = str(item.get("modality") or "").lower()
+            tokens = _as_int(item.get("tokens") or item.get("token_count"))
+            if modality and tokens is not None:
+                result[modality] = result.get(modality, 0) + tokens
+        return result
+
+    usage.input_tokens = _as_int(raw.get("total_input_tokens"))
+    output = _as_int(raw.get("total_output_tokens"))
+    thoughts = _as_int(raw.get("total_thought_tokens"))
+    if output is not None or thoughts is not None:
+        usage.output_tokens = (output or 0) + (thoughts or 0)
+
+    inputs = by_modality(raw.get("input_tokens_by_modality"))
+    if inputs:
+        usage.input_image_tokens = inputs.get("image", 0)
+        usage.input_text_tokens = sum(
+            tokens for modality, tokens in inputs.items() if modality != "image"
+        )
+    outputs = by_modality(raw.get("output_tokens_by_modality"))
+    if outputs:
+        usage.output_image_tokens = outputs.get("image", 0)
+        # Tokens de raciocínio são cobrados como saída de texto.
+        usage.output_text_tokens = (thoughts or 0) + sum(
+            tokens for modality, tokens in outputs.items() if modality != "image"
+        )
+    return usage
+
+
+def _openai_usage(payload: Any, size: str | None) -> ProviderUsage:
+    usage = ProviderUsage(size=size)
+    raw = payload.get("usage") if isinstance(payload, dict) else None
+    if not isinstance(raw, dict):
+        return usage
+    usage.input_tokens = _as_int(raw.get("input_tokens"))
+    usage.output_tokens = _as_int(raw.get("output_tokens"))
+    input_details = raw.get("input_tokens_details")
+    if isinstance(input_details, dict):
+        usage.input_text_tokens = _as_int(input_details.get("text_tokens"))
+        usage.input_image_tokens = _as_int(input_details.get("image_tokens"))
+    output_details = raw.get("output_tokens_details")
+    if isinstance(output_details, dict):
+        usage.output_text_tokens = _as_int(output_details.get("text_tokens"))
+        usage.output_image_tokens = _as_int(output_details.get("image_tokens"))
+    return usage
+
+
+def _openrouter_usage(payload: Any) -> ProviderUsage:
+    usage = ProviderUsage()
+    raw = payload.get("usage") if isinstance(payload, dict) else None
+    if not isinstance(raw, dict):
+        return usage
+    usage.input_tokens = _as_int(raw.get("prompt_tokens"))
+    usage.output_tokens = _as_int(raw.get("completion_tokens"))
+    completion_details = raw.get("completion_tokens_details")
+    if isinstance(completion_details, dict):
+        usage.output_image_tokens = _as_int(completion_details.get("image_tokens"))
+
+    cost = _as_float(raw.get("cost"))
+    # Com BYOK no OpenRouter, `cost` é só a taxa dele; o valor do provedor de
+    # origem vem em cost_details.upstream_inference_cost.
+    details = raw.get("cost_details")
+    if raw.get("is_byok") and isinstance(details, dict):
+        upstream = _as_float(details.get("upstream_inference_cost"))
+        if upstream is not None:
+            cost = (cost or 0.0) + upstream
+    usage.provider_cost_usd = cost
+    return usage
+
+
+def _replicate_usage(prediction: Any) -> ProviderUsage:
+    usage = ProviderUsage()
+    metrics = prediction.get("metrics") if isinstance(prediction, dict) else None
+    if not isinstance(metrics, dict):
+        return usage
+    usage.compute_seconds = _as_float(metrics.get("predict_time"))
+    usage.image_count = _as_int(metrics.get("image_count"))
+    usage.input_tokens = _as_int(
+        metrics.get("input_token_count") or metrics.get("input_tokens")
+    )
+    usage.output_tokens = _as_int(
+        metrics.get("output_token_count") or metrics.get("output_tokens")
+    )
+    return usage
+
+
 class ProviderAdapter:
     provider: str
 
@@ -1255,7 +1609,7 @@ class ProviderAdapter:
 
     def generate(
         self, api_key: str, model_id: str, plan: PromptPlan
-    ) -> list[ImagePayload]:
+    ) -> AdapterResult:
         raise NotImplementedError
 
 
@@ -1424,7 +1778,7 @@ class GeminiAdapter(ProviderAdapter):
 
     def generate(
         self, api_key: str, model_id: str, plan: PromptPlan
-    ) -> list[ImagePayload]:
+    ) -> AdapterResult:
         if len(plan.visuals) > 14:
             raise ApiError(
                 400,
@@ -1475,7 +1829,7 @@ class GeminiAdapter(ProviderAdapter):
                 code="no_image_returned",
                 provider=self.provider,
             )
-        return images
+        return AdapterResult(images, _gemini_usage(payload))
 
 
 # ---------------------------------------------------------------------------
@@ -1621,9 +1975,10 @@ class OpenAIAdapter(ProviderAdapter):
 
     def generate(
         self, api_key: str, model_id: str, plan: PromptPlan
-    ) -> list[ImagePayload]:
+    ) -> AdapterResult:
         is_gpt_image = _openai_is_gpt_image(model_id)
         headers = _openai_headers(api_key)
+        size = _frame_size(plan.frame_count)
 
         if plan.visuals:
             if not is_gpt_image:
@@ -1651,7 +2006,7 @@ class OpenAIAdapter(ProviderAdapter):
                     for visual in plan.visuals
                 ],
                 "n": 1,
-                "size": _frame_size(plan.frame_count),
+                "size": size,
                 "output_format": "png",
                 "background": "transparent",
             }
@@ -1667,7 +2022,7 @@ class OpenAIAdapter(ProviderAdapter):
                 "model": model_id,
                 "prompt": plan.prompt,
                 "n": 1,
-                "size": _frame_size(plan.frame_count),
+                "size": size,
             }
             if is_gpt_image:
                 body["output_format"] = "png"
@@ -1696,7 +2051,7 @@ class OpenAIAdapter(ProviderAdapter):
                 code="no_image_returned",
                 provider=self.provider,
             )
-        return images
+        return AdapterResult(images, _openai_usage(payload, size))
 
 
 # ---------------------------------------------------------------------------
@@ -1816,7 +2171,7 @@ class OpenRouterAdapter(ProviderAdapter):
 
     def generate(
         self, api_key: str, model_id: str, plan: PromptPlan
-    ) -> list[ImagePayload]:
+    ) -> AdapterResult:
         body: dict[str, Any] = {
             "model": model_id,
             "prompt": plan.prompt,
@@ -1884,7 +2239,7 @@ class OpenRouterAdapter(ProviderAdapter):
                 code="no_image_returned",
                 provider=self.provider,
             )
-        return images
+        return AdapterResult(images, _openrouter_usage(payload))
 
 
 # ---------------------------------------------------------------------------
@@ -2346,7 +2701,7 @@ class ReplicateAdapter(ProviderAdapter):
 
     def generate(
         self, api_key: str, model_id: str, plan: PromptPlan
-    ) -> list[ImagePayload]:
+    ) -> AdapterResult:
         owner, name, version = _replicate_parse_model(model_id)
         schema, resolved_version = _replicate_fetch_schema(
             api_key, owner, name, version
@@ -2392,7 +2747,7 @@ class ReplicateAdapter(ProviderAdapter):
                 code="no_image_returned",
                 provider=self.provider,
             )
-        return images
+        return AdapterResult(images, _replicate_usage(prediction))
 
 
 # ---------------------------------------------------------------------------
@@ -2533,7 +2888,10 @@ def generate(payload: GenerateRequest) -> GenerateResponse:
     """Gera frames a partir das referências de pose ou corrige frames anteriores."""
     adapter = _get_adapter(payload.provider)
     plan = _build_prompt_plan(payload)
-    images = adapter.generate(payload.api_key, payload.model_id, plan)
+    started = time.perf_counter()
+    result = adapter.generate(payload.api_key, payload.model_id, plan)
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    images = result.images
 
     total_chars = sum(len(image.b64) for image in images)
     if total_chars > MAX_TOTAL_BASE64_CHARS:
@@ -2552,5 +2910,12 @@ def generate(payload: GenerateRequest) -> GenerateResponse:
         target_frame_index=plan.target_frame_index,
         images=[image.b64 for image in images],
         mime_types=[image.mime_type for image in images],
+        usage=_build_usage_info(
+            payload.provider,
+            payload.model_id,
+            result.usage,
+            len(images),
+            elapsed_ms,
+        ),
     )
 
