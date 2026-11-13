@@ -219,10 +219,13 @@ export async function generateSprites({
     payload.target_frame_index = targetFrameIndex
   }
 
+  const startedAt = performance.now()
   const data = await postJson('/api/generate', payload)
+  const clientElapsedMs = Math.round(performance.now() - startedAt)
   const mimeTypes = Array.isArray(data.mime_types) ? data.mime_types : []
 
   return {
+    usage: normalizeUsage(data.usage, clientElapsedMs),
     provider: data.provider || provider,
     modelId: data.model_id || modelId,
     mode: data.mode || 'generation',
@@ -234,6 +237,84 @@ export async function generateSprites({
       toDataUrl(base64, mimeTypes[index]),
     ),
   }
+}
+
+/**
+ * @typedef {{
+ *   inputTokens: number | null,
+ *   outputTokens: number | null,
+ *   totalTokens: number | null,
+ *   imageCount: number,
+ *   costUsd: number | null,
+ *   costSource: 'provider' | 'estimate' | 'unavailable',
+ *   costNote: string | null,
+ *   serverElapsedMs: number | null,
+ *   clientElapsedMs: number,
+ *   computeSeconds: number | null,
+ * }} GenerationUsage
+ */
+
+/**
+ * Normaliza as métricas de tempo/custo devolvidas pelo backend.
+ *
+ * - `clientElapsedMs`: tempo total visto pelo usuário (rede + provedor).
+ * - `serverElapsedMs`: tempo que o backend passou falando com o provedor.
+ * - `costSource`: `provider` (valor real), `estimate` (tabela de preços) ou
+ *   `unavailable` (o provedor não dá base para calcular).
+ *
+ * @param {unknown} raw
+ * @param {number} clientElapsedMs
+ * @returns {GenerationUsage}
+ */
+function normalizeUsage(raw, clientElapsedMs) {
+  const usage = raw && typeof raw === 'object' ? raw : {}
+  const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+  const source = ['provider', 'estimate'].includes(usage.cost_source)
+    ? usage.cost_source
+    : 'unavailable'
+  return {
+    inputTokens: num(usage.input_tokens),
+    outputTokens: num(usage.output_tokens),
+    totalTokens: num(usage.total_tokens),
+    imageCount: num(usage.image_count) ?? 0,
+    costUsd: num(usage.cost_usd),
+    costSource: source,
+    costNote: typeof usage.cost_note === 'string' ? usage.cost_note : null,
+    serverElapsedMs: num(usage.elapsed_ms),
+    clientElapsedMs,
+    computeSeconds: num(usage.compute_seconds),
+  }
+}
+
+/**
+ * Formata um valor em dólares. Valores pequenos ganham mais casas decimais
+ * para não aparecerem como US$ 0,00.
+ *
+ * @param {number | null} value
+ * @returns {string}
+ */
+export function formatUsd(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '—'
+  const digits = value === 0 ? 2 : value < 0.01 ? 4 : value < 1 ? 3 : 2
+  return `US$ ${value.toLocaleString('pt-BR', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}`
+}
+
+/**
+ * @param {number | null} ms
+ * @returns {string} ex.: `850 ms`, `12,4 s`, `1 min 05 s`
+ */
+export function formatDuration(ms) {
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) return '—'
+  if (ms < 1000) return `${Math.round(ms)} ms`
+  const seconds = ms / 1000
+  if (seconds < 60) {
+    return `${seconds.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} s`
+  }
+  const minutes = Math.floor(seconds / 60)
+  return `${minutes} min ${String(Math.floor(seconds % 60)).padStart(2, '0')} s`
 }
 
 /**

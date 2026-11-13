@@ -13,6 +13,7 @@ import ExportPanel from './dashboard/ExportPanel'
 import FrameEditModal from './FrameEditModal'
 import PreviewPanel from './dashboard/PreviewPanel'
 import ReferencePanel from './dashboard/ReferencePanel'
+import UsagePanel from './dashboard/UsagePanel'
 import {
   DEFAULT_PROVIDER,
   MAX_PREVIOUS_FRAMES,
@@ -169,6 +170,26 @@ function ToastStack({ toasts, onDismiss }) {
   )
 }
 
+const USAGE_STORAGE_KEY = 'spritetransfer:usage-history'
+const MAX_USAGE_HISTORY = 200
+
+/** Lê o histórico de métricas salvo, descartando entradas inválidas. */
+function loadUsageHistory() {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(USAGE_STORAGE_KEY) || '[]')
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (entry) =>
+        entry &&
+        typeof entry.id === 'number' &&
+        entry.usage &&
+        typeof entry.usage.clientElapsedMs === 'number',
+    )
+  } catch {
+    return []
+  }
+}
+
 export default function MainDashboard() {
   /* ------------------------------- BYOK ---------------------------------- */
   const [provider, setProvider] = useState(DEFAULT_PROVIDER)
@@ -239,6 +260,43 @@ export default function MainDashboard() {
   const [modalCandidateFrame, setModalCandidateFrame] = useState(null)
   const [modalApplyingSingle, setModalApplyingSingle] = useState(false)
   const [modalApplyingAll, setModalApplyingAll] = useState(false)
+
+  /* ------------------- Métricas de tempo e custo ----------------------- */
+  // Histórico das chamadas à IA (tempo, tokens, custo). Fica no localStorage
+  // para o controle de custo sobreviver a um recarregamento da página; a chave
+  // de API nunca entra aqui.
+  const [usageHistory, setUsageHistory] = useState(loadUsageHistory)
+  const usageId = useRef(usageHistory.reduce((max, entry) => Math.max(max, entry.id), 0))
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(USAGE_STORAGE_KEY, JSON.stringify(usageHistory))
+    } catch {
+      // Armazenamento indisponível (aba anônima, cota): segue só em memória.
+    }
+  }, [usageHistory])
+
+  /** Chama a API e registra as métricas da resposta no histórico. */
+  const generateAndTrack = useCallback(async (input) => {
+    const result = await generateSprites(input)
+    usageId.current += 1
+    const entry = {
+      id: usageId.current,
+      at: Date.now(),
+      kind: input.correctionPrompt
+        ? input.targetFrameIndex !== null && input.targetFrameIndex !== undefined
+          ? 'single'
+          : 'batch'
+        : 'generation',
+      provider: result.provider,
+      modelId: result.modelId,
+      usage: result.usage,
+    }
+    setUsageHistory((current) => [...current, entry].slice(-MAX_USAGE_HISTORY))
+    return result
+  }, [])
+
+  const handleResetUsage = useCallback(() => setUsageHistory([]), [])
 
   /* ----------------------------- Avisos --------------------------------- */
   const [elapsed, setElapsed] = useState(0)
@@ -657,7 +715,7 @@ export default function MainDashboard() {
 
       let result
       try {
-        result = await generateSprites({
+        result = await generateAndTrack({
           provider,
           apiKey: apiKey.trim(),
           modelId,
@@ -845,7 +903,7 @@ export default function MainDashboard() {
     setCorrectionError('')
 
     try {
-      const result = await generateSprites({
+      const result = await generateAndTrack({
         provider,
         apiKey: apiKey.trim(),
         modelId,
@@ -986,7 +1044,7 @@ export default function MainDashboard() {
     setCorrectionError('')
 
     try {
-      const result = await generateSprites({
+      const result = await generateAndTrack({
         provider,
         apiKey: apiKey.trim(),
         modelId,
@@ -1123,7 +1181,7 @@ export default function MainDashboard() {
     setCorrectionError('')
 
     try {
-      const result = await generateSprites({
+      const result = await generateAndTrack({
         provider,
         apiKey: apiKey.trim(),
         modelId,
@@ -1329,6 +1387,8 @@ export default function MainDashboard() {
             error={correctionError}
             elapsed={elapsed}
           />
+
+          <UsagePanel history={usageHistory} onReset={handleResetUsage} />
 
           <ExportPanel
             frames={frames}
