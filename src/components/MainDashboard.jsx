@@ -171,7 +171,47 @@ function ToastStack({ toasts, onDismiss }) {
 }
 
 const USAGE_STORAGE_KEY = 'spritetransfer:usage-history'
+const API_CONFIG_STORAGE_KEY = 'spritetransfer:api-config'
 const MAX_USAGE_HISTORY = 200
+
+/** Lê configuração de API salva (provedor, chaves e modelos preferidos). */
+function loadSavedApiConfig() {
+  try {
+    const raw = window.localStorage.getItem(API_CONFIG_STORAGE_KEY)
+    if (!raw) {
+      return {
+        provider: DEFAULT_PROVIDER,
+        rememberKey: true,
+        keysByProvider: {},
+        modelsByProvider: {},
+      }
+    }
+    const parsed = JSON.parse(raw)
+    return {
+      provider:
+        typeof parsed?.provider === 'string' && parsed.provider
+          ? parsed.provider
+          : DEFAULT_PROVIDER,
+      rememberKey:
+        typeof parsed?.rememberKey === 'boolean' ? parsed.rememberKey : true,
+      keysByProvider:
+        parsed?.keysByProvider && typeof parsed.keysByProvider === 'object'
+          ? parsed.keysByProvider
+          : {},
+      modelsByProvider:
+        parsed?.modelsByProvider && typeof parsed.modelsByProvider === 'object'
+          ? parsed.modelsByProvider
+          : {},
+    }
+  } catch {
+    return {
+      provider: DEFAULT_PROVIDER,
+      rememberKey: true,
+      keysByProvider: {},
+      modelsByProvider: {},
+    }
+  }
+}
 
 /** Lê o histórico de métricas salvo, descartando entradas inválidas. */
 function loadUsageHistory() {
@@ -192,13 +232,45 @@ function loadUsageHistory() {
 
 export default function MainDashboard() {
   /* ------------------------------- BYOK ---------------------------------- */
-  const [provider, setProvider] = useState(DEFAULT_PROVIDER)
-  const [apiKey, setApiKey] = useState('')
+  const [initialApiConfig] = useState(loadSavedApiConfig)
+  const [provider, setProvider] = useState(initialApiConfig.provider)
+  const [rememberKey, setRememberKey] = useState(initialApiConfig.rememberKey)
+  const [savedKeys, setSavedKeys] = useState(initialApiConfig.keysByProvider)
+  const [savedModels, setSavedModels] = useState(initialApiConfig.modelsByProvider)
+  const [apiKey, setApiKey] = useState(() =>
+    initialApiConfig.rememberKey
+      ? initialApiConfig.keysByProvider[initialApiConfig.provider] || ''
+      : '',
+  )
   const [keyStatus, setKeyStatus] = useState('idle')
   const [keyError, setKeyError] = useState('')
   const [models, setModels] = useState([])
   const [modelsWarning, setModelsWarning] = useState(null)
-  const [modelId, setModelId] = useState('')
+  const [modelId, setModelId] = useState(
+    () => initialApiConfig.modelsByProvider[initialApiConfig.provider] || '',
+  )
+  const validationSeqRef = useRef(0)
+
+  useEffect(() => {
+    try {
+      const payload = rememberKey
+        ? {
+            provider,
+            rememberKey: true,
+            keysByProvider: savedKeys,
+            modelsByProvider: savedModels,
+          }
+        : {
+            provider,
+            rememberKey: false,
+            keysByProvider: {},
+            modelsByProvider: {},
+          }
+      window.localStorage.setItem(API_CONFIG_STORAGE_KEY, JSON.stringify(payload))
+    } catch {
+      // Armazenamento indisponível (aba anônima, cota): segue só em memória.
+    }
+  }, [provider, rememberKey, savedKeys, savedModels])
 
   /* --------------------------- Referência ------------------------------- */
   const [reference, setReference] = useState(null)
@@ -464,52 +536,214 @@ export default function MainDashboard() {
   }, [generating, correcting])
 
   /* ---------------------------- Handlers -------------------------------- */
-  const handleProviderChange = useCallback((nextProvider) => {
-    setProvider(nextProvider)
+  const runValidateKey = useCallback(
+    async (
+      targetProvider,
+      rawKey,
+      preferredModelId = '',
+      { silent = false } = {},
+    ) => {
+      const trimmedKey = String(rawKey || '').trim()
+      if (!trimmedKey) {
+        if (!silent) {
+          setKeyStatus('error')
+          setKeyError('Informe sua chave de API antes de validar.')
+        }
+        return
+      }
+
+      const seq = ++validationSeqRef.current
+      setKeyStatus('validating')
+      setKeyError('')
+      setModels([])
+      setModelId('')
+      setModelsWarning(null)
+
+      try {
+        const result = await listModels({
+          provider: targetProvider,
+          apiKey: trimmedKey,
+        })
+        if (validationSeqRef.current !== seq) return
+
+        setModels(result.models)
+        setModelsWarning(result.warning)
+        const preferred =
+          result.models.find((model) => model.supports_reference_images !== false) ??
+          result.models[0]
+
+        let resolvedModelId = preferred?.id || ''
+        if (
+          preferredModelId &&
+          result.models.some((model) => model.id === preferredModelId)
+        ) {
+          resolvedModelId = preferredModelId
+        }
+        setModelId(resolvedModelId)
+        setKeyStatus('valid')
+
+        if (rememberKey) {
+          setSavedKeys((current) =>
+            current[targetProvider] === trimmedKey
+              ? current
+              : { ...current, [targetProvider]: trimmedKey },
+          )
+          if (resolvedModelId) {
+            setSavedModels((current) =>
+              current[targetProvider] === resolvedModelId
+                ? current
+                : { ...current, [targetProvider]: resolvedModelId },
+            )
+          }
+        }
+
+        if (!silent) {
+          pushToast(
+            `Chave validada: ${result.models.length} modelo${result.models.length === 1 ? '' : 's'} disponíve${result.models.length === 1 ? 'l' : 'is'}.`,
+            'success',
+          )
+        }
+      } catch (error) {
+        if (validationSeqRef.current !== seq) return
+        setKeyStatus('error')
+        const message = describeApiError(error)
+        setKeyError(message)
+        if (!silent) {
+          pushToast(message, 'error')
+        }
+        console.error('[models]', error)
+      }
+    },
+    [pushToast, rememberKey],
+  )
+
+  const autoValidatedRef = useRef(false)
+  useEffect(() => {
+    if (autoValidatedRef.current) return
+    autoValidatedRef.current = true
+    if (!initialApiConfig.rememberKey) return
+    const savedKey =
+      initialApiConfig.keysByProvider[initialApiConfig.provider] || ''
+    if (!savedKey.trim()) return
+    const savedModel =
+      initialApiConfig.modelsByProvider[initialApiConfig.provider] || ''
+    runValidateKey(initialApiConfig.provider, savedKey, savedModel, {
+      silent: true,
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleProviderChange = useCallback(
+    (nextProvider) => {
+      validationSeqRef.current += 1
+      setProvider(nextProvider)
+      const nextKey = rememberKey ? savedKeys[nextProvider] || '' : ''
+      const nextSavedModel = rememberKey ? savedModels[nextProvider] || '' : ''
+      setApiKey(nextKey)
+      setModels([])
+      setModelId(nextSavedModel)
+      setModelsWarning(null)
+      setKeyStatus('idle')
+      setKeyError('')
+      if (nextKey.trim()) {
+        runValidateKey(nextProvider, nextKey, nextSavedModel, { silent: true })
+      }
+    },
+    [rememberKey, runValidateKey, savedKeys, savedModels],
+  )
+
+  const handleApiKeyChange = useCallback(
+    (nextValue) => {
+      setApiKey(nextValue)
+      setKeyStatus('idle')
+      setKeyError('')
+      if (rememberKey) {
+        const trimmed = nextValue.trim()
+        setSavedKeys((current) => {
+          if (trimmed) {
+            if (current[provider] === trimmed) return current
+            return { ...current, [provider]: trimmed }
+          }
+          if (!(provider in current)) return current
+          const next = { ...current }
+          delete next[provider]
+          return next
+        })
+      }
+    },
+    [provider, rememberKey],
+  )
+
+  const handleModelChange = useCallback(
+    (nextModelId) => {
+      setModelId(nextModelId)
+      if (rememberKey && nextModelId) {
+        setSavedModels((current) =>
+          current[provider] === nextModelId
+            ? current
+            : { ...current, [provider]: nextModelId },
+        )
+      }
+    },
+    [provider, rememberKey],
+  )
+
+  const handleRememberKeyChange = useCallback(
+    (nextRemember) => {
+      setRememberKey(nextRemember)
+      if (nextRemember) {
+        const trimmed = apiKey.trim()
+        if (trimmed) {
+          setSavedKeys((current) => ({ ...current, [provider]: trimmed }))
+        }
+        if (modelId) {
+          setSavedModels((current) => ({ ...current, [provider]: modelId }))
+        }
+        pushToast('Chave de API será mantida salva neste navegador.', 'info')
+      } else {
+        setSavedKeys({})
+        setSavedModels({})
+        pushToast(
+          'Chaves removidas do navegador (mantida apenas na aba atual).',
+          'info',
+        )
+      }
+    },
+    [apiKey, modelId, provider, pushToast],
+  )
+
+  const handleClearSavedKey = useCallback(() => {
+    validationSeqRef.current += 1
+    setApiKey('')
     setModels([])
     setModelId('')
     setModelsWarning(null)
     setKeyStatus('idle')
     setKeyError('')
-  }, [])
+    setSavedKeys((current) => {
+      if (!(provider in current)) return current
+      const next = { ...current }
+      delete next[provider]
+      return next
+    })
+    setSavedModels((current) => {
+      if (!(provider in current)) return current
+      const next = { ...current }
+      delete next[provider]
+      return next
+    })
+    pushToast('Chave salva deste provedor foi removida.', 'info')
+  }, [provider, pushToast])
 
-  const handleValidateKey = useCallback(async () => {
-    const trimmedKey = apiKey.trim()
-    if (!trimmedKey) {
-      setKeyStatus('error')
-      setKeyError('Informe sua chave de API antes de validar.')
-      return
-    }
-
-    setKeyStatus('validating')
-    setKeyError('')
-    setModels([])
-    setModelId('')
-    setModelsWarning(null)
-
-    try {
-      const result = await listModels({ provider, apiKey: trimmedKey })
-      setModels(result.models)
-      setModelsWarning(result.warning)
-      const preferred =
-        result.models.find((model) => model.supports_reference_images !== false) ??
-        result.models[0]
-      setModelId((current) => {
-        const stillThere = result.models.some((model) => model.id === current)
-        return stillThere ? current : preferred?.id || ''
-      })
-      setKeyStatus('valid')
-      pushToast(
-        `Chave validada: ${result.models.length} modelo${result.models.length === 1 ? '' : 's'} disponíve${result.models.length === 1 ? 'l' : 'is'}.`,
-        'success',
-      )
-    } catch (error) {
-      setKeyStatus('error')
-      setKeyError(describeApiError(error))
-      pushToast(describeApiError(error), 'error')
-      console.error('[models]', error)
-    }
-  }, [apiKey, provider, pushToast])
+  const handleValidateKey = useCallback(
+    () =>
+      runValidateKey(
+        provider,
+        apiKey,
+        modelId || (rememberKey ? savedModels[provider] || '' : ''),
+      ),
+    [apiKey, modelId, provider, rememberKey, runValidateKey, savedModels],
+  )
 
   const handleFileSelected = useCallback(
     async (file) => {
@@ -1313,14 +1547,17 @@ export default function MainDashboard() {
             provider={provider}
             onProviderChange={handleProviderChange}
             apiKey={apiKey}
-            onApiKeyChange={setApiKey}
+            onApiKeyChange={handleApiKeyChange}
             onValidate={handleValidateKey}
             status={keyStatus}
             error={keyError}
             models={models}
             modelId={modelId}
-            onModelChange={setModelId}
+            onModelChange={handleModelChange}
             modelsWarning={modelsWarning}
+            rememberKey={rememberKey}
+            onRememberKeyChange={handleRememberKeyChange}
+            onClearKey={handleClearSavedKey}
           />
 
           <ReferencePanel
@@ -1406,8 +1643,11 @@ export default function MainDashboard() {
               Privacidade
             </p>
             <p className="mt-1.5">
-              A chave fica apenas na memória desta aba. O recorte, o alinhamento,
-              a spritesheet e o GIF são processados localmente via Canvas API.
+              Por padrão, sua chave é lembrada apenas localmente no seu navegador
+              (localStorage); desmarque a opção acima se quiser mantê-la só na
+              memória desta aba. Ela nunca é gravada no servidor, e o recorte, o
+              alinhamento, a spritesheet e o GIF são processados localmente via
+              Canvas API.
             </p>
             <p className="mt-1.5 font-mono text-slate-600">
               pipeline 100% client-side · sem upload de frames

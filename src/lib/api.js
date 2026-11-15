@@ -109,7 +109,9 @@ async function postJson(path, body) {
         : response.status === 504
           ? 'A geração demorou demais e foi interrompida. Tente novamente com menos frames.'
           : response.status >= 500
-            ? 'O backend falhou ao processar o pedido. Tente novamente em alguns instantes.'
+            ? data === null
+              ? 'Não foi possível conectar ao backend na porta 8000. Certifique-se de rodar a API junto com o frontend (ex.: npm run dev:all ou .\\.venv\\Scripts\\python.exe -m uvicorn api.index:app --reload --port 8000).'
+              : 'O backend falhou ao processar o pedido. Tente novamente em alguns instantes.'
             : `A API respondeu com status ${response.status}.`
 
     throw new ApiRequestError(detail || fallbackByStatus, {
@@ -129,16 +131,51 @@ async function postJson(path, body) {
   return data
 }
 
+/** Identifica o provedor provável pelo prefixo da chave de API. */
+function detectKeyProvider(apiKey) {
+  const trimmed = String(apiKey || '').trim()
+  if (trimmed.startsWith('AIza')) return 'gemini'
+  if (trimmed.startsWith('sk-or-')) return 'openrouter'
+  if (trimmed.startsWith('r8_')) return 'replicate'
+  if (trimmed.startsWith('sk-')) return 'openai'
+  return null
+}
+
 /**
  * Valida a chave e lista os modelos de imagem/visão do provedor.
  *
  * @param {{ provider: string, apiKey: string }} input
  */
 export async function listModels({ provider, apiKey }) {
-  const data = await postJson('/api/models', {
-    provider,
-    api_key: apiKey,
-  })
+  let data
+  try {
+    data = await postJson('/api/models', {
+      provider,
+      api_key: apiKey,
+    })
+  } catch (error) {
+    if (
+      error instanceof ApiRequestError &&
+      (error.code === 'invalid_api_key' ||
+        error.status === 400 ||
+        error.status === 401)
+    ) {
+      const guessedId = detectKeyProvider(apiKey)
+      if (guessedId && guessedId !== provider) {
+        const guessedLabel =
+          PROVIDERS.find((item) => item.id === guessedId)?.label || guessedId
+        throw new ApiRequestError(
+          `${error.message} Dica: o formato dessa chave parece ser do provedor ${guessedLabel}; confira se o provedor selecionado acima está correto.`,
+          {
+            status: error.status,
+            code: error.code,
+            provider: error.provider,
+          },
+        )
+      }
+    }
+    throw error
+  }
 
   return {
     provider: data.provider || provider,
