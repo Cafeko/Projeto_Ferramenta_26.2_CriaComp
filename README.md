@@ -358,6 +358,11 @@ duas colunas em tablets):
 ### Coluna central — preview e filmstrip
 - Player lado a lado com a **animação original** e a **nova animação**, em loop
   sincronizado, controle de **FPS** e **Play/Pause**.
+- Cada quadro tem **zoom (100%–800%)**, **arraste** para reposicionar e
+  **tela cheia** (`Esc` fecha). A roda do mouse e os botões `−`/`+` controlam o
+  zoom; clicar na porcentagem, dar duplo clique ou pressionar `0` redefine.
+  O zoom/posição é mantido ao navegar entre frames e volta ao normal quando o
+  tamanho da imagem muda.
 - Filmstrip com os frames PNG numerados e o botão **`[ Editar Frame ]`** em cada
   um. A janela de edição se ajusta à tela (com rolagem) e a correção individual
   envia só aquele frame. A correção é guardada como **candidata**: a janela
