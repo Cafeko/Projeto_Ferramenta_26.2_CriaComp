@@ -2629,6 +2629,28 @@ def _replicate_wait(
                 provider="replicate",
                 details=error,
             )
+        # Modelos oficiais do Google (família Nano Banana) rodam no Replicate
+        # com credenciais internas do próprio Replicate junto ao Google. Quando
+        # essa autenticação quebra, a previsão falha com um erro de JWT do
+        # google-auth ("invalid_grant: Invalid JWT Signature", "RefreshError").
+        # Nada disso depende da chave de API do usuário nem do payload enviado.
+        if (
+            "invalid_grant" in lowered
+            or "invalid jwt" in lowered
+            or "refresherror" in lowered
+            or "jwt signature" in lowered
+        ):
+            raise ApiError(
+                502,
+                "O Replicate não conseguiu autenticar este modelo no Google "
+                "(falha interna do provedor, não é a sua chave de API nem os "
+                "dados enviados). Tente novamente em alguns minutos; se o erro "
+                "continuar, escolha outro modelo ou use o provedor Gemini com "
+                "uma chave do Google AI Studio.",
+                code="provider_auth_failed",
+                provider="replicate",
+                details=error,
+            )
         raise ApiError(
             502,
             f"O Replicate não conseguiu gerar a imagem: {error}",

@@ -254,9 +254,15 @@ Todas as falhas previstas voltam com uma mensagem em português e um `code`:
 ```
 
 Códigos comuns: `invalid_api_key`, `quota_exhausted`, `rate_limit`,
-`provider_timeout`, `no_image_returned`, `model_without_image_input`,
-`too_many_images`, `payload_too_large`, `invalid_image` e
-`target_frame_index_out_of_range`.
+`provider_timeout`, `provider_auth_failed`, `no_image_returned`,
+`model_without_image_input`, `too_many_images`, `payload_too_large`,
+`invalid_image` e `target_frame_index_out_of_range`.
+
+`provider_auth_failed` (somente Replicate) indica que o próprio Replicate não
+conseguiu autenticar o modelo junto ao Google — por exemplo, os modelos
+`google/nano-banana*`, que dependem de credenciais internas do Replicate. Não é
+problema da sua chave de API: tente novamente mais tarde ou use outro modelo
+(FLUX, Seedream, GPT Image) ou o provedor Gemini direto.
 
 ### Página de teste (laboratório)
 
