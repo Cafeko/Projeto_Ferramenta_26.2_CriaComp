@@ -261,9 +261,13 @@ export default function PreviewPanel({
             <strong className="text-cyan-300">
               {referenceTotal} frame{referenceTotal === 1 ? '' : 's'}
             </strong>{' '}
-            conforme a grade detectada na referência ({referenceGrid?.columns}×
-            {referenceGrid?.rows}). Os campos abaixo recortam a referência e o
-            resultado — mudar a grade não altera a quantidade gerada.
+            na grade{' '}
+            <strong className="text-cyan-300">
+              {referenceGrid?.columns}×{referenceGrid?.rows}
+            </strong>
+            . Ajuste Colunas/Linhas para corrigir a detecção automática — a mesma
+            grade define os frames pedidos à IA e recorta a referência e o
+            resultado.
           </div>
 
           <label className="flex cursor-pointer items-center justify-between gap-2">

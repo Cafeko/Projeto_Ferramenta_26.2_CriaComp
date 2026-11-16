@@ -156,6 +156,13 @@ nunca envia um valor fora da lista aceita pelo modelo — por exemplo, `21:9` em
 modelos que só chegam a `16:9`. Se mesmo assim o provedor recusar apenas a
 proporção, a requisição é repetida uma vez sem esse campo.
 
+Quando o modelo pedido é da família `google/nano-banana*` e falha por credencial
+interna do Replicate (`provider_auth_failed`), o backend tenta automaticamente,
+em ordem, `openai/gpt-image-2`, `black-forest-labs/flux-2-pro` e
+`bytedance/seedream-4` (configurável por `REPLICATE_FALLBACK_MODELS`, separado
+por vírgulas). A resposta traz `fallback_from` e `warning`, e `model_id` passa a
+ser o modelo realmente usado; o frontend avisa o usuário com um toast.
+
 ```json
 {
   "provider": "gemini",
@@ -211,12 +218,14 @@ Resposta:
   paleta, contorno, sombreamento e nível de detalhe. O texto `art_style` também
   define o estilo. Se nem imagem nem texto de estilo forem enviados, a própria
   referência de movimento também passa a valer como estilo. `frame_count`
-  informa quantos frames a saída deve ter (o total detectado na referência,
-  ex.: 16) e `grid_columns`/`grid_rows` usam essa mesma grade (ex.: 4×4). A
-  referência é enviada inteira e a IA deve desenhar o mesmo número de frames, na
-  mesma ordem. O resultado é uma spritesheet; a divisão em frames acontece só no
-  frontend, com os mesmos campos Colunas/Linhas aplicados à referência e ao
-  resultado.
+  informa quantos frames a saída deve ter e `grid_columns`/`grid_rows` usam essa
+  mesma grade (ex.: 4×4). No frontend, esses dois valores vêm dos campos
+  **Colunas/Linhas** do painel central — a detecção automática só os
+  pré-preenche, de modo que o usuário pode corrigir uma detecção errada (ex.:
+  folha de 3 frames detectada como 5×1). A referência é enviada inteira e a IA
+  deve desenhar o mesmo número de frames, na mesma ordem. O resultado é uma
+  spritesheet; a divisão em frames acontece só no frontend, com os mesmos campos
+  Colunas/Linhas aplicados à referência e ao resultado.
 - **Correção** (`correction_prompt` presente): as `previous_generated_images`
   são a fonte de verdade visual.
   - **Frame individual:** envie somente aquele frame e `target_frame_index: 0`
@@ -240,9 +249,14 @@ Resposta:
   "mode": "generation",
   "target_frame_index": null,
   "images": ["<base64>"],
-  "mime_types": ["image/png"]
+  "mime_types": ["image/png"],
+  "fallback_from": null,
+  "warning": null
 }
 ```
+
+`fallback_from` só é preenchido quando o backend teve de trocar de modelo; nesse
+caso `model_id` é o modelo efetivo e `warning` explica a troca em português.
 
 Para exibir no frontend:
 `data:${mime_types[i]};base64,${images[i]}`.
@@ -268,8 +282,9 @@ Códigos comuns: `invalid_api_key`, `quota_exhausted`, `rate_limit`,
 `provider_auth_failed` (somente Replicate) indica que o próprio Replicate não
 conseguiu autenticar o modelo junto ao Google — por exemplo, os modelos
 `google/nano-banana*`, que dependem de credenciais internas do Replicate. Não é
-problema da sua chave de API: tente novamente mais tarde ou use outro modelo
-(FLUX, Seedream, GPT Image) ou o provedor Gemini direto.
+problema da sua chave de API: o backend tenta sozinho um modelo alternativo
+(veja acima) ou, se todos falharem, use outro modelo (FLUX, Seedream, GPT Image)
+ou o provedor Gemini direto.
 
 ### Página de teste (laboratório)
 
@@ -296,10 +311,11 @@ duas colunas em tablets):
 - **BYOK:** provedor, chave (com botão `Validar`), lista dinâmica de modelos e
   link `Obter chave` para o console de cada provedor.
 - **Referência de movimento:** drag & drop de PNG/spritesheet. O app **detecta
-  a grade real da imagem** pelos pixels (transparência ou cor de fundo) e usa
-  esse total para definir quantos frames a IA deve gerar. A grade **Colunas/
-  Linhas** fica só no painel central e recorta **tanto a referência antiga
-  quanto o resultado novo**. Ex.: uma spritesheet 4×4 gera 16 frames.
+  uma grade provável** pelos pixels (transparência ou cor de fundo) apenas para
+  pré-preencher **Colunas/Linhas**; esses campos são a fonte da verdade e podem
+  ser ajustados quando a detecção errar. A mesma grade define quantos frames a
+  IA deve gerar e recorta **tanto a referência antiga quanto o resultado novo**.
+  Ex.: uma spritesheet 4×4 gera 16 frames.
 - **Presets rápidos:** removidos da interface; o gerador procedural continua
   guardado em `src/utils/presets.js` para uso futuro.
 - **Prompt:** aparência do personagem e estilo de arte. A aparência pode ser

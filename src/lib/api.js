@@ -264,7 +264,10 @@ export async function generateSprites({
   return {
     usage: normalizeUsage(data.usage, clientElapsedMs),
     provider: data.provider || provider,
+    // `modelId` já é o modelo efetivamente usado (pode ter havido fallback).
     modelId: data.model_id || modelId,
+    fallbackFrom: data.fallback_from || null,
+    warning: data.warning || null,
     mode: data.mode || 'generation',
     targetFrameIndex:
       typeof data.target_frame_index === 'number'
