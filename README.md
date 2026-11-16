@@ -356,17 +356,18 @@ duas colunas em tablets):
   enviando a referência inteira e o número real de frames para a IA.
 
 ### Coluna central — preview e filmstrip
-- Player lado a lado com a **animação original** e a **nova animação**.
-  No modo **Loop**, aparece o controle de **FPS (1–60)**; fora dele, o controle
-  some. **Anterior/Próximo** navegam em círculo: do último frame volta ao
-  primeiro e do primeiro vai ao último.
+- Player lado a lado com a **animação original** e a **nova animação**, com
+  seletor de **Modo: Frame a frame** ou **Animação**.
+  No modo **Frame a frame** aparecem **Anterior/Próximo** e o campo **Frame N de
+  M** (navegação circular: do último volta ao primeiro e vice-versa). No modo
+  **Animação** aparece um **slider de FPS (1–60)** com o valor em `fps`.
 - Cada quadro tem **zoom (100%–800%)**, **arraste** para reposicionar e
   **tela cheia** (`Esc` fecha). A roda do mouse e os botões `−`/`+` controlam o
   zoom; clicar na porcentagem, dar duplo clique ou pressionar `0` redefine.
   O zoom/posição é mantido ao navegar entre frames e volta ao normal quando o
   tamanho da imagem muda.
 - Na **tela cheia** também há **Anterior/Próximo**, alternância entre
-  **Loop** e **Frame a frame** e o controle de **FPS** quando em loop;
+  **Animação** e **Frame a frame** e o controle de **FPS** quando em animação;
   `←`/`→` trocam de frame e `Esc` fecha.
 - Filmstrip com os frames PNG numerados e o botão **`[ Editar Frame ]`** em cada
   um. A janela de edição se ajusta à tela (com rolagem) e a correção individual

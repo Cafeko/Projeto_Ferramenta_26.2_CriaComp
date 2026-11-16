@@ -86,11 +86,6 @@ function FrameView({
   onPrev,
   onNext,
 }) {
-  const accentUi =
-    accent === 'cyan'
-      ? 'border-cyan-400/25 bg-cyan-400/[0.04]'
-      : 'border-white/10 bg-white/[0.02]'
-
   const safeTotal = Math.max(1, Math.floor(totalFrames || 0))
   const safeIndex = Math.max(0, Math.min(Math.floor(frameIndex || 0), safeTotal - 1))
 
@@ -265,10 +260,10 @@ function FrameView({
     <div
       ref={ref}
       data-frame-viewer={fullscreen ? 'fullscreen' : 'inline'}
-      className={`group bg-checkerboard relative overflow-hidden border border-white/5 ${
+      className={`group bg-checkerboard relative overflow-hidden border ${
         fullscreen
           ? 'min-h-0 flex-1 rounded-xl border-white/10'
-          : 'h-64 rounded-lg sm:h-72'
+          : 'h-72 rounded-lg border-white/15 sm:h-80'
       } ${hasFrame ? 'cursor-grab touch-none select-none' : ''} ${
         dragging ? 'cursor-grabbing' : ''
       }`}
@@ -311,8 +306,8 @@ function FrameView({
   )
 
   return (
-    <div className={`rounded-xl border p-2.5 ${accentUi}`}>
-      <div className="mb-2 flex items-center justify-between gap-2 px-0.5">
+    <div className="min-w-0">
+      <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
         <span
           className={`flex items-center gap-1.5 text-[11px] font-semibold tracking-wide uppercase ${
             accent === 'cyan' ? 'text-cyan-300' : 'text-slate-400'
@@ -393,7 +388,7 @@ function FrameView({
                 ) : (
                   <Square className="size-3.5" />
                 )}
-                {viewMode === 'loop' ? 'Loop' : 'Frame a frame'}
+                {viewMode === 'loop' ? 'Animação' : 'Frame a frame'}
               </button>
               {viewMode === 'loop' && (
                 <label className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-slate-400">
@@ -505,97 +500,117 @@ export default function PreviewPanel({
   return (
     <div className="space-y-4">
       <Card
-        title="Frames Lado a Lado"
-        subtitle="Frame original vs. novo — navegue quadro a quadro"
+        title="Visualização dos frames"
+        subtitle="Original e novo frame lado a lado"
         icon={LayoutGrid}
-        badge={
-          <Pill tone={viewMode === 'loop' ? 'green' : 'neutral'}>
-            <span
-              className={`size-1.5 rounded-full ${
-                viewMode === 'loop' ? 'animate-pulse bg-emerald-400' : 'bg-slate-500'
-              }`}
-            />
-            {viewMode === 'loop' ? 'loop' : 'frame a frame'}
-          </Pill>
-        }
         bodyClassName="p-3.5"
       >
-        {/* Controles de navegação */}
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={goPrev}
-              disabled={totalFrames === 0}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-semibold text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <ChevronLeft className="size-4" />
-              Anterior
-            </button>
-            <button
-              type="button"
-              onClick={goNext}
-              disabled={totalFrames === 0}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-semibold text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Próximo
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
+        {/* Barra de modo: frame a frame ou animação */}
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-white/10 pb-3">
+          <span className="text-[10px] font-semibold tracking-wider text-slate-500 uppercase">
+            Modo:
+          </span>
 
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold text-slate-400 uppercase">Quadro</span>
-            <input
-              type="number"
-              min={1}
-              max={safeTotal}
-              value={safeIndex + 1}
-              aria-label="Quadro atual"
-              onChange={(event) => {
-                const v = Number.parseInt(event.target.value, 10)
-                if (!Number.isNaN(v) && v >= 1 && v <= safeTotal) {
-                  onCurrentFrameIndexChange(v - 1)
-                }
-              }}
-              className="w-12 rounded-lg border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-slate-100 focus:border-cyan-400/60 focus:outline-none"
-            />
-            <span className="text-[11px] text-slate-500">de {safeTotal}</span>
-          </div>
-
-          <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="inline-flex overflow-hidden rounded-md border border-white/15">
             <button
               type="button"
-              onClick={() => onViewModeChange((v) => (v === 'loop' ? 'frame-by-frame' : 'loop'))}
-              className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[11px] font-semibold transition ${
-                viewMode === 'loop'
-                  ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
-                  : 'border-white/10 bg-white/[0.03] text-slate-300 hover:border-white/25 hover:bg-white/[0.04]'
+              onClick={() => onViewModeChange('frame-by-frame')}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                viewMode === 'frame-by-frame'
+                  ? 'bg-cyan-400/15 text-cyan-200'
+                  : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
               }`}
             >
-              {viewMode === 'loop' ? <RefreshCw className="size-3.5" /> : <Square className="size-3.5" />}
-              {viewMode === 'loop' ? 'Loop' : 'Frame a frame'}
+              <Square className="size-3" />
+              Frame a frame
             </button>
+            <button
+              type="button"
+              onClick={() => onViewModeChange('loop')}
+              className={`inline-flex items-center gap-1.5 border-l border-white/10 px-2.5 py-1.5 text-[11px] font-semibold transition ${
+                viewMode === 'loop'
+                  ? 'bg-cyan-400/15 text-cyan-200'
+                  : 'text-slate-400 hover:bg-white/5 hover:text-slate-200'
+              }`}
+            >
+              <RefreshCw className="size-3" />
+              Animação
+            </button>
+          </div>
 
-            {viewMode === 'loop' && (
-              <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
-                <span className="uppercase">FPS</span>
+          {viewMode === 'frame-by-frame' ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={goPrev}
+                disabled={totalFrames === 0}
+                className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-black/20 px-2 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft className="size-3.5" />
+                Anterior
+              </button>
+              <button
+                type="button"
+                onClick={goNext}
+                disabled={totalFrames === 0}
+                className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-black/20 px-2 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Próximo
+                <ChevronRight className="size-3.5" />
+              </button>
+
+              <span className="ml-1 text-[11px] text-slate-400">Frame:</span>
+              <input
+                type="number"
+                min={1}
+                max={safeTotal}
+                value={safeIndex + 1}
+                aria-label="Quadro atual"
+                onChange={(event) => {
+                  const v = Number.parseInt(event.target.value, 10)
+                  if (!Number.isNaN(v) && v >= 1 && v <= safeTotal) {
+                    onCurrentFrameIndexChange(v - 1)
+                  }
+                }}
+                className="w-12 rounded-md border border-white/15 bg-black/30 px-1.5 py-1 text-center font-mono text-[11px] text-slate-100 focus:border-cyan-400/60 focus:outline-none"
+              />
+              <span className="text-[11px] text-slate-500">de {safeTotal}</span>
+            </div>
+          ) : (
+            <div className="flex min-w-[220px] flex-1 items-center gap-3">
+              <input
+                type="range"
+                min={1}
+                max={60}
+                value={fps}
+                aria-label="Velocidade da animação em FPS"
+                onChange={(event) => {
+                  const value = Number.parseInt(event.target.value, 10)
+                  if (Number.isFinite(value)) {
+                    onFpsChange(Math.min(60, Math.max(1, value)))
+                  }
+                }}
+                className="h-1.5 min-w-24 flex-1 cursor-pointer accent-cyan-400"
+              />
+              <label className="inline-flex items-center gap-1.5">
                 <input
                   type="number"
                   min={1}
                   max={60}
                   value={fps}
+                  aria-label="Quadros por segundo"
                   onChange={(event) => {
                     const value = Number.parseInt(event.target.value, 10)
                     if (Number.isFinite(value)) {
                       onFpsChange(Math.min(60, Math.max(1, value)))
                     }
                   }}
-                  aria-label="Quadros por segundo"
-                  className="w-14 rounded-lg border border-white/10 bg-black/30 px-2 py-1 font-mono text-[11px] text-slate-100 focus:border-cyan-400/60 focus:outline-none"
+                  className="w-12 rounded-md border border-white/15 bg-black/30 px-1.5 py-1 text-center font-mono text-[11px] text-slate-100 focus:border-cyan-400/60 focus:outline-none"
                 />
+                <span className="text-[11px] text-slate-500">fps</span>
               </label>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Player de frames lado a lado */}
