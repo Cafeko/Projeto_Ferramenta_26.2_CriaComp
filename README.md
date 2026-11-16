@@ -219,15 +219,15 @@ Resposta:
   paleta, contorno, sombreamento e nível de detalhe. O texto `art_style` também
   define o estilo. Se nem imagem nem texto de estilo forem enviados, a própria
   referência de movimento também passa a valer como estilo. `frame_count`
-  informa quantos frames a saída deve ter. No frontend ele vem do campo
-  **Frames a gerar**, que é **independente** da grade de recorte: se a detecção
-  falhar e a imagem ficar 1×1, o usuário ainda pode informar, por exemplo, 8, e
-  a IA deve desenhar 8 frames. `grid_columns`/`grid_rows` são a grade usada para
-  recortar a referência e o resultado (o backend a normaliza para uma linha
-  quando não bate com `frame_count`). A referência é enviada inteira e a IA deve
-  desenhar o número pedido, na mesma ordem. O resultado é uma spritesheet; a
-  divisão em frames acontece só no frontend, com os mesmos campos Colunas/Linhas
-  aplicados à referência e ao resultado.
+  informa quantos frames a saída deve ter. No frontend ele vem da **grade de
+  geração (Colunas × Linhas)** do campo **Frames a gerar**, que é **independente**
+  da grade de recorte: se a detecção falhar e a imagem de recorte ficar 1×1, o
+  usuário ainda pode informar 4×2 (= 8 frames), e a IA deve desenhar 8 frames
+  nessa grade. `grid_columns`/`grid_rows` enviados são a grade de geração; o
+  backend a normaliza para uma linha se não bater com `frame_count`. A referência
+  é enviada inteira e a IA deve desenhar o número pedido, na mesma ordem. O
+  resultado é uma spritesheet; a divisão em frames acontece só no frontend, com
+  a grade de recorte aplicada à referência e ao resultado.
 - **Correção** (`correction_prompt` presente): as `previous_generated_images`
   são a fonte de verdade visual.
   - **Frame individual:** envie somente aquele frame e `target_frame_index: 0`
@@ -339,11 +339,11 @@ duas colunas em tablets):
   link `Obter chave` para o console de cada provedor.
 - **Referência de movimento:** drag & drop de PNG/spritesheet. O app **detecta
   uma grade provável** pelos pixels (transparência ou cor de fundo) apenas para
-  pré-preencher **Colunas/Linhas** e **Frames a gerar**; esses campos são a
-  fonte da verdade e podem ser ajustados quando a detecção errar. A grade de
-  recorte só exibe; a contagem **Frames a gerar** é independente e define quantos
-  frames a IA deve desenhar — por exemplo, uma folha de 8 frames detectada como
-  1×1 ainda pode ser gerada com 8 frames.
+  pré-preencher a **grade de recorte** e a **grade de geração**. Esses campos são
+  a fonte da verdade e podem ser ajustados quando a detecção errar. A grade de
+  recorte só exibe; a **grade de geração (Colunas × Linhas)** é independente e
+  define `frame_count` — por exemplo, uma folha de 8 frames detectada como 1×1
+  ainda pode ser gerada em 4×2 (= 8 frames).
 - **Presets rápidos:** removidos da interface; o gerador procedural continua
   guardado em `src/utils/presets.js` para uso futuro.
 - **Prompt:** aparência do personagem e estilo de arte. A aparência pode ser

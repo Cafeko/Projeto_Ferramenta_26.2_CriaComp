@@ -313,18 +313,26 @@ export default function MainDashboard() {
     () => initialWorkspace?.autoSlice ?? false,
   )
   // Quantidade de frames que a IA deve desenhar. É independente da grade de
-  // recorte: a detecção pode falhar e a folha ainda ter vários frames.
-  const [frameCount, setFrameCount] = useState(() =>
-    Number.isFinite(initialWorkspace?.frameCount)
-      ? String(initialWorkspace.frameCount)
+  // Grade que a IA deve desenhar (colunas × linhas). É independente da grade
+  // de recorte usada para exibir/fatiar a imagem.
+  const [generationColumns, setGenerationColumns] = useState(() =>
+    Number.isFinite(initialWorkspace?.generationColumns)
+      ? String(initialWorkspace.generationColumns)
+      : '1',
+  )
+  const [generationRows, setGenerationRows] = useState(() =>
+    Number.isFinite(initialWorkspace?.generationRows)
+      ? String(initialWorkspace.generationRows)
       : '1',
   )
   const initialGridTotal =
     Math.max(1, Number.parseInt(initialWorkspace?.columns, 10) || 1) *
     Math.max(1, Number.parseInt(initialWorkspace?.rows, 10) || 1)
-  const frameCountEditedRef = useRef(
-    Number.isFinite(initialWorkspace?.frameCount) &&
-      initialWorkspace.frameCount !== initialGridTotal,
+  const generationGridEditedRef = useRef(
+    Number.isFinite(initialWorkspace?.generationColumns) &&
+      Number.isFinite(initialWorkspace?.generationRows) &&
+      initialWorkspace.generationColumns * initialWorkspace.generationRows !==
+        initialGridTotal,
   )
   const [referenceFrames, setReferenceFrames] = useState([])
   const [referenceBusy, setReferenceBusy] = useState(false)
@@ -345,19 +353,31 @@ export default function MainDashboard() {
       total: parsedColumns * parsedRows,
     }
   }, [autoSlice, columns, rows])
-  // Número de frames pedido à IA: o campo "Frames a gerar" manda; se estiver
-  // vazio/inválido, usa o total da grade como fallback.
-  const requestedFrameCount = useMemo(() => {
-    const parsed = Number.parseInt(frameCount, 10)
-    const value = Number.isFinite(parsed) ? parsed : effectiveGrid.total
-    return Math.min(64, Math.max(1, value))
-  }, [frameCount, effectiveGrid])
+  // Grade que a IA deve desenhar: colunas × linhas. O total é o frame_count.
+  const generationGrid = useMemo(() => {
+    const parsedColumns = Math.min(
+      64,
+      Math.max(1, Number.parseInt(generationColumns, 10) || 1),
+    )
+    const parsedRows = Math.min(
+      64,
+      Math.max(1, Number.parseInt(generationRows, 10) || 1),
+    )
+    return {
+      columns: parsedColumns,
+      rows: parsedRows,
+      total: parsedColumns * parsedRows,
+    }
+  }, [generationColumns, generationRows])
+  const requestedFrameCount = generationGrid.total
 
-  // Enquanto o usuário não editar a contagem, ela acompanha a grade de recorte.
+  // Enquanto o usuário não editar a grade de geração, ela acompanha a grade de
+  // recorte (ex.: detecção 4×2 preenche as duas).
   useEffect(() => {
     if (!autoSlice) return
-    if (frameCountEditedRef.current) return
-    setFrameCount(String(Math.min(64, effectiveGrid.total)))
+    if (generationGridEditedRef.current) return
+    setGenerationColumns(String(effectiveGrid.columns))
+    setGenerationRows(String(effectiveGrid.rows))
   }, [autoSlice, effectiveGrid])
   // Imagem opcional que define APENAS o estilo de arte do resultado.
   const [styleReference, setStyleReference] = useState(null)
@@ -540,7 +560,9 @@ export default function MainDashboard() {
       exportColumns,
       appearance,
       artStyle,
-      frameCount: Number.parseInt(frameCount, 10) || null,
+      generationColumns:
+        Number.parseInt(generationColumns, 10) || null,
+      generationRows: Number.parseInt(generationRows, 10) || null,
     })
     if (!saved) warnLocalSaveFailure('salvar as configurações da sessão')
   }, [
@@ -552,7 +574,8 @@ export default function MainDashboard() {
     exportColumns,
     appearance,
     artStyle,
-    frameCount,
+    generationColumns,
+    generationRows,
     warnLocalSaveFailure,
   ])
 
@@ -1130,8 +1153,9 @@ export default function MainDashboard() {
         setColumns(String(detected.columns))
         setRows(String(detected.rows))
         setAutoSlice(total > 1)
-        frameCountEditedRef.current = false
-        setFrameCount(String(total))
+        generationGridEditedRef.current = false
+        setGenerationColumns(String(detected.columns))
+        setGenerationRows(String(detected.rows))
         setReferenceError('')
 
         if (total > 1) {
@@ -1168,8 +1192,9 @@ export default function MainDashboard() {
     setColumns('1')
     setRows('1')
     setAutoSlice(false)
-    frameCountEditedRef.current = false
-    setFrameCount('1')
+    generationGridEditedRef.current = false
+    setGenerationColumns('1')
+    setGenerationRows('1')
     setReferenceError('')
     void deleteLocalImages(LOCAL_IMAGE_KEYS.pose).then((ok) => {
       if (!ok) warnLocalSaveFailure('apagar a referência salva')
@@ -1250,15 +1275,27 @@ export default function MainDashboard() {
     })
   }, [warnLocalSaveFailure])
 
-  const handleFrameCountChange = useCallback((value) => {
-    frameCountEditedRef.current = true
+  const handleGenerationColumnsChange = useCallback((value) => {
+    generationGridEditedRef.current = true
     if (String(value).trim() === '') {
-      setFrameCount('')
+      setGenerationColumns('')
       return
     }
     const parsed = Number.parseInt(value, 10)
     if (Number.isFinite(parsed)) {
-      setFrameCount(String(Math.min(64, Math.max(1, parsed))))
+      setGenerationColumns(String(Math.min(64, Math.max(1, parsed))))
+    }
+  }, [])
+
+  const handleGenerationRowsChange = useCallback((value) => {
+    generationGridEditedRef.current = true
+    if (String(value).trim() === '') {
+      setGenerationRows('')
+      return
+    }
+    const parsed = Number.parseInt(value, 10)
+    if (Number.isFinite(parsed)) {
+      setGenerationRows(String(Math.min(64, Math.max(1, parsed))))
     }
   }, [])
 
@@ -1267,6 +1304,7 @@ export default function MainDashboard() {
       modelId &&
       referenceFrames.length > 0 &&
       (appearance.trim() || appearanceReference) &&
+      generationGrid.total <= 64 &&
       !generating,
   )
 
@@ -1277,15 +1315,19 @@ export default function MainDashboard() {
     if (!appearance.trim() && !appearanceReference) {
       return 'Descreva a aparência do personagem ou envie uma imagem de referência.'
     }
+    if (generationGrid.total > 64) {
+      return `A grade de geração tem ${generationGrid.total} frames, mas o limite é 64 por chamada. Reduza Colunas/Linhas de geração.`
+    }
     const hasStyle = Boolean(artStyle.trim() || styleReference)
     return hasStyle
-      ? `Pronto para gerar ${requestedFrameCount} frame(s) — grade de recorte ${effectiveGrid.columns}×${effectiveGrid.rows}.`
+      ? `Pronto para gerar ${requestedFrameCount} frame(s) — grade de geração ${generationGrid.columns}×${generationGrid.rows}, recorte ${effectiveGrid.columns}×${effectiveGrid.rows}.`
       : `Pronto para gerar ${requestedFrameCount} frame(s) — sem estilo definido, a referência de movimento também define o estilo.`
   }, [
     apiKey,
     modelId,
     referenceFrames,
     effectiveGrid,
+    generationGrid,
     requestedFrameCount,
     appearance,
     appearanceReference,
@@ -1310,12 +1352,11 @@ export default function MainDashboard() {
         ? [appearanceReference.dataUrl]
         : []
 
-      // A contagem vem do campo "Frames a gerar" (independente da grade de
-      // recorte). A referência inteira continua sendo enviada; a IA deve
-      // desenhar essa quantidade mesmo que a grade de exibição seja 1×1.
+      // A grade de geração define frame_count e o formato do desenho. É
+      // independente da grade de recorte usada para exibir/fatiar a imagem.
       const requestedGrid = {
-        columns: effectiveGrid.columns,
-        rows: effectiveGrid.rows,
+        columns: generationGrid.columns,
+        rows: generationGrid.rows,
       }
 
       try {
@@ -1439,6 +1480,7 @@ export default function MainDashboard() {
     pushToast,
     reference,
     effectiveGrid,
+    generationGrid,
     requestedFrameCount,
     styleReference,
     appearanceReference,
@@ -2080,8 +2122,10 @@ export default function MainDashboard() {
             rows={rows}
             autoSlice={autoSlice}
             referenceGrid={effectiveGrid}
-            frameCount={frameCount}
-            onFrameCountChange={handleFrameCountChange}
+            generationColumns={generationColumns}
+            generationRows={generationRows}
+            onGenerationColumnsChange={handleGenerationColumnsChange}
+            onGenerationRowsChange={handleGenerationRowsChange}
             onColumnsChange={setColumns}
             onRowsChange={setRows}
             onAutoSliceChange={setAutoSlice}
