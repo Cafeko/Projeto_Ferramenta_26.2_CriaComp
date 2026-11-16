@@ -83,7 +83,8 @@ async function postJson(path, body) {
     })
   } catch {
     throw new ApiRequestError(
-      'Não foi possível falar com o backend. Verifique sua conexão e tente de novo.',
+      'Não foi possível falar com o servidor do app. Verifique sua internet e ' +
+        'tente novamente.',
       { code: 'network_error' },
     )
   }
@@ -105,14 +106,14 @@ async function postJson(path, body) {
         : null
     const fallbackByStatus =
       response.status === 413
-        ? 'O conjunto de imagens passou do limite de tamanho da Vercel. Reduza a quantidade ou a resolução dos frames.'
+        ? 'O conjunto de imagens passou do limite de tamanho da requisição. Reduza a resolução ou a quantidade de frames e tente novamente.'
         : response.status === 504
-          ? 'A geração demorou demais e foi interrompida. Tente novamente com menos frames.'
+          ? 'A geração demorou mais que o limite e foi interrompida. Tente novamente ou escolha um modelo mais rápido.'
           : response.status >= 500
             ? data === null
-              ? 'Não foi possível conectar ao backend na porta 8000. Certifique-se de rodar a API junto com o frontend (ex.: npm run dev:all ou .\\.venv\\Scripts\\python.exe -m uvicorn api.index:app --reload --port 8000).'
-              : 'O backend falhou ao processar o pedido. Tente novamente em alguns instantes.'
-            : `A API respondeu com status ${response.status}.`
+              ? 'O servidor do app não respondeu. Se estiver rodando localmente, inicie a API junto com o frontend (ex.: npm run dev:all) e tente novamente.'
+              : 'O servidor falhou ao processar o pedido. Tente novamente em instantes; se persistir, recarregue a página.'
+            : `A API respondeu com status ${response.status}. Tente novamente.`
 
     throw new ApiRequestError(detail || fallbackByStatus, {
       status: response.status,
@@ -123,7 +124,7 @@ async function postJson(path, body) {
 
   if (!data) {
     throw new ApiRequestError(
-      'O backend respondeu sem um JSON válido. Verifique se a API está no ar.',
+      'O servidor respondeu sem um JSON válido. Recarregue a página e tente novamente.',
       { status: response.status, code: 'invalid_response' },
     )
   }

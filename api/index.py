@@ -312,7 +312,8 @@ def _make_image(raw: bytes, mime_type: str | None) -> ImagePayload:
     if len(raw) > MAX_OUTPUT_IMAGE_BYTES:
         raise ApiError(
             502,
-            "O provedor retornou uma imagem maior do que o limite permitido.",
+            "O provedor devolveu uma imagem maior que o limite permitido. "
+            "Gere em resolução menor.",
             code="provider_image_too_large",
         )
     mime = _sniff_mime(raw) or (mime_type or "image/png").split(";")[0].strip()
@@ -330,7 +331,8 @@ def _image_from_provider_b64(b64: str, mime_type: str | None = None) -> ImagePay
     except (binascii.Error, ValueError) as exc:
         raise ApiError(
             502,
-            "O provedor retornou uma imagem em Base64 inválida.",
+            "O provedor devolveu uma imagem em formato inválido. "
+            "Tente novamente ou escolha outro modelo.",
             code="invalid_provider_image",
         ) from exc
     return _make_image(raw, mime_type)
@@ -340,7 +342,7 @@ def _normalize_input_image(value: str, field: str, index: int) -> ImagePayload:
     if not isinstance(value, str) or not value.strip():
         raise ApiError(
             400,
-            f"A imagem {index + 1} do campo '{field}' está vazia.",
+            f"A imagem {index + 1} ({field}) está vazia. Reenvie o arquivo.",
             code="invalid_image",
         )
 
@@ -351,7 +353,8 @@ def _normalize_input_image(value: str, field: str, index: int) -> ImagePayload:
         if not separator or ";base64" not in header.lower():
             raise ApiError(
                 400,
-                f"A imagem {index + 1} do campo '{field}' não é um data URL Base64 válido.",
+                f"A imagem {index + 1} ({field}) está em formato inválido. "
+                "Reenvie como PNG, JPEG, WebP ou GIF.",
                 code="invalid_image",
             )
         declared_mime = header[5:].split(";", 1)[0].strip() or None
@@ -362,21 +365,24 @@ def _normalize_input_image(value: str, field: str, index: int) -> ImagePayload:
     except (binascii.Error, ValueError) as exc:
         raise ApiError(
             400,
-            f"A imagem {index + 1} do campo '{field}' não está em Base64 válido.",
+            f"A imagem {index + 1} ({field}) está corrompida ou em Base64 "
+            "inválido. Reenvie o arquivo.",
             code="invalid_image",
         ) from exc
 
     if not raw:
         raise ApiError(
             400,
-            f"A imagem {index + 1} do campo '{field}' está vazia.",
+            f"A imagem {index + 1} ({field}) está vazia. Reenvie o arquivo.",
             code="invalid_image",
         )
     if len(raw) > MAX_INPUT_IMAGE_BYTES:
+        limit_mb = MAX_INPUT_IMAGE_BYTES // (1024 * 1024)
+        size_mb = len(raw) / (1024 * 1024)
         raise ApiError(
             413,
-            f"A imagem {index + 1} do campo '{field}' excede o limite de "
-            f"{MAX_INPUT_IMAGE_BYTES // (1024 * 1024)} MB.",
+            f"A imagem {index + 1} ({field}) tem {size_mb:.1f} MB e passa do "
+            f"limite de {limit_mb} MB. Reduza a resolução e reenvie.",
             code="image_too_large",
         )
 
@@ -457,7 +463,6 @@ _SAFETY_HINTS = (
 
 
 def _http_error(provider: str, response: requests.Response) -> ApiError:
-    label = PROVIDER_LABELS.get(provider, provider)
     status = response.status_code
     upstream = _provider_message(response)
     upstream_lower = upstream.lower()
@@ -465,8 +470,9 @@ def _http_error(provider: str, response: requests.Response) -> ApiError:
     if any(hint in upstream_lower for hint in _SAFETY_HINTS):
         return ApiError(
             422,
-            f"O {label} bloqueou a geração por segurança. "
-            "Ajuste o personagem, o estilo ou a instrução e tente novamente.",
+            "O provedor bloqueou a geração por política de conteúdo. "
+            "Ajuste a descrição do personagem, o estilo ou a instrução e tente "
+            "novamente.",
             code="safety_blocked",
             provider=provider,
             provider_status=status,
@@ -478,8 +484,9 @@ def _http_error(provider: str, response: requests.Response) -> ApiError:
     ):
         return ApiError(
             401,
-            f"Chave de API inválida ou sem permissão no {label}. "
-            "Confira a chave e as permissões da conta e tente novamente.",
+            "A chave de API foi recusada pelo provedor (inválida, expirada ou sem "
+            "permissão). Confira a chave no painel do provedor, valide novamente "
+            "e, se necessário, gere uma nova.",
             code="invalid_api_key",
             provider=provider,
             provider_status=status,
@@ -491,7 +498,7 @@ def _http_error(provider: str, response: requests.Response) -> ApiError:
         if status == 402 or any(hint in upstream_lower for hint in _QUOTA_HINTS):
             return ApiError(
                 402,
-                f"Saldo ou cota esgotados no {label}. "
+                "A conta do provedor está sem saldo ou cota para esta geração. "
                 "Adicione créditos na conta do provedor ou use outra chave.",
                 code="quota_exhausted",
                 provider=provider,
@@ -499,8 +506,8 @@ def _http_error(provider: str, response: requests.Response) -> ApiError:
             )
         return ApiError(
             429,
-            f"Limite de requisições atingido no {label}. "
-            "Aguarde alguns instantes e tente novamente.",
+            "O provedor limitou a quantidade de requisições. "
+            "Aguarde alguns segundos e tente novamente.",
             code="rate_limit",
             provider=provider,
             provider_status=status,
@@ -510,8 +517,8 @@ def _http_error(provider: str, response: requests.Response) -> ApiError:
     if status == 404:
         return ApiError(
             400,
-            f"O {label} não encontrou o modelo ou recurso solicitado. "
-            "Confira o model_id escolhido.",
+            "O provedor não encontrou o modelo ou recurso solicitado. "
+            "Confira o ID do modelo ou escolha outro na lista.",
             code="model_not_found",
             provider=provider,
             provider_status=status,
@@ -521,7 +528,7 @@ def _http_error(provider: str, response: requests.Response) -> ApiError:
     if status == 413:
         return ApiError(
             413,
-            "As imagens enviadas são grandes demais para o provedor. "
+            "O conjunto de imagens passou do limite de tamanho do provedor. "
             "Reduza a resolução ou a quantidade de frames e tente novamente.",
             code="payload_too_large",
             provider=provider,
@@ -532,7 +539,9 @@ def _http_error(provider: str, response: requests.Response) -> ApiError:
     if status in (400, 422):
         return ApiError(
             400,
-            f"A requisição foi recusada pelo {label}. {upstream}",
+            "O provedor recusou parâmetros da requisição. Confira o modelo, a "
+            "resolução e as opções escolhidas e tente novamente. "
+            f"Detalhe do provedor: {upstream}",
             code="invalid_request",
             provider=provider,
             provider_status=status,
@@ -542,7 +551,8 @@ def _http_error(provider: str, response: requests.Response) -> ApiError:
     if status >= 500:
         return ApiError(
             502,
-            f"O {label} está temporariamente indisponível. Tente novamente em instantes.",
+            "O provedor está temporariamente indisponível. "
+            "Tente novamente em alguns instantes.",
             code="provider_unavailable",
             provider=provider,
             provider_status=status,
@@ -551,7 +561,8 @@ def _http_error(provider: str, response: requests.Response) -> ApiError:
 
     return ApiError(
         502,
-        f"O {label} recusou a requisição. {upstream}",
+        "O provedor recusou a requisição sem detalhes suficientes. "
+        "Tente novamente; se persistir, escolha outro modelo.",
         code="provider_error",
         provider=provider,
         provider_status=status,
@@ -568,7 +579,6 @@ def _request_json(
     json_body: Any = None,
     timeout: tuple[float, float] = _REQUEST_TIMEOUT,
 ) -> Any:
-    label = PROVIDER_LABELS.get(provider, provider)
     try:
         response = requests.request(
             method,
@@ -580,7 +590,7 @@ def _request_json(
     except requests.Timeout as exc:
         raise ApiError(
             504,
-            f"O {label} demorou demais para responder. "
+            "O provedor não respondeu dentro do tempo limite. "
             "Tente novamente ou escolha um modelo mais rápido.",
             code="provider_timeout",
             provider=provider,
@@ -588,14 +598,15 @@ def _request_json(
     except requests.ConnectionError as exc:
         raise ApiError(
             502,
-            f"Não foi possível conectar ao {label}. Verifique sua internet e tente novamente.",
+            "Não foi possível conectar ao provedor. "
+            "Verifique sua internet e tente novamente.",
             code="connection_error",
             provider=provider,
         ) from exc
     except requests.RequestException as exc:
         raise ApiError(
             502,
-            f"Falha de rede ao falar com o {label}. Tente novamente.",
+            "A conexão com o provedor foi interrompida. Tente novamente.",
             code="network_error",
             provider=provider,
             details=type(exc).__name__,
@@ -609,7 +620,8 @@ def _request_json(
     except ValueError as exc:
         raise ApiError(
             502,
-            f"O {label} devolveu uma resposta que não é JSON válido.",
+            "O provedor devolveu uma resposta inesperada ou incompleta. "
+            "Tente novamente; se persistir, escolha outro modelo.",
             code="invalid_provider_response",
             provider=provider,
             provider_status=response.status_code,
@@ -623,7 +635,6 @@ def _download_image(
     provider: str,
     api_key: str | None = None,
 ) -> ImagePayload:
-    label = PROVIDER_LABELS.get(provider, provider)
     headers: dict[str, str] = {}
     if api_key and provider == "replicate":
         headers["Authorization"] = f"Bearer {api_key}"
@@ -639,14 +650,16 @@ def _download_image(
     except requests.Timeout as exc:
         raise ApiError(
             504,
-            f"O download da imagem gerada pelo {label} demorou demais.",
+            "A imagem foi gerada, mas o download demorou demais. "
+            "Tente novamente.",
             code="download_timeout",
             provider=provider,
         ) from exc
     except requests.RequestException as exc:
         raise ApiError(
             502,
-            f"Não foi possível baixar a imagem gerada pelo {label}.",
+            "A imagem foi gerada, mas não foi possível baixá-la. "
+            "Tente novamente.",
             code="download_failed",
             provider=provider,
             details=type(exc).__name__,
@@ -656,8 +669,8 @@ def _download_image(
         if response.status_code >= 400:
             raise ApiError(
                 502,
-                f"Não foi possível baixar a imagem gerada pelo {label} "
-                f"(HTTP {response.status_code}).",
+                "A imagem foi gerada, mas o download falhou "
+                f"(HTTP {response.status_code}). Tente novamente.",
                 code="download_failed",
                 provider=provider,
                 provider_status=response.status_code,
@@ -670,14 +683,16 @@ def _download_image(
             if len(content) > MAX_OUTPUT_IMAGE_BYTES:
                 raise ApiError(
                     502,
-                    "A imagem retornada pelo provedor é grande demais.",
+                    "O provedor devolveu uma imagem grande demais para o app "
+                    "processar. Gere em resolução menor.",
                     code="provider_image_too_large",
                     provider=provider,
                 )
         if not content:
             raise ApiError(
                 502,
-                f"O {label} retornou uma imagem vazia.",
+                "O provedor devolveu uma imagem vazia. Tente novamente; se "
+                "persistir, escolha outro modelo.",
                 code="empty_provider_image",
                 provider=provider,
             )
@@ -1048,8 +1063,9 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
     if request.total_base64_chars() > MAX_TOTAL_BASE64_CHARS:
         raise ApiError(
             413,
-            "O conjunto de imagens enviado é grande demais para a função na Vercel. "
-            "Reduza a resolução ou a quantidade de frames e tente novamente.",
+            "O conjunto de imagens passou do limite de ~4 MB da função. "
+            "Reduza a resolução, a quantidade de frames ou remova imagens "
+            "opcionais e tente novamente.",
             code="payload_too_large",
         )
 
@@ -1076,14 +1092,15 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
     if correction and not previous_images:
         raise ApiError(
             400,
-            "Para aplicar uma correção, envie ao menos uma imagem em "
-            "'previous_generated_images'.",
+            "Para corrigir, envie ao menos uma imagem gerada anteriormente "
+            "no campo 'previous_generated_images'.",
             code="missing_previous_images",
         )
     if target is not None and not correction:
         raise ApiError(
             400,
-            "'target_frame_index' só pode ser usado junto com 'correction_prompt'.",
+            "O frame alvo só pode ser usado junto com uma instrução de "
+            "correção ('correction_prompt').",
             code="invalid_target_frame",
         )
 
@@ -1094,8 +1111,9 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
             if target >= len(previous_images):
                 raise ApiError(
                     400,
-                    f"'target_frame_index' ({target}) está fora do intervalo de "
-                    f"'previous_generated_images' (0 a {len(previous_images) - 1}).",
+                    f"O frame escolhido ({target}) está fora do intervalo das "
+                    f"imagens enviadas (0 a {len(previous_images) - 1}). "
+                    "Escolha um frame válido.",
                     code="target_frame_index_out_of_range",
                 )
             previous_selected = [previous_images[target]]
@@ -1174,7 +1192,7 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
         if not visuals:
             raise ApiError(
                 400,
-                "Nenhuma imagem válida foi enviada para a correção.",
+                "Envie ao menos uma imagem válida para a correção.",
                 code="missing_images",
             )
 
@@ -1783,8 +1801,9 @@ class GeminiAdapter(ProviderAdapter):
         if len(plan.visuals) > 14:
             raise ApiError(
                 400,
-                "O Gemini aceita no máximo 14 imagens de referência por requisição. "
-                "Reduza a quantidade de frames e tente novamente.",
+                f"O modelo aceita no máximo 14 imagens de referência por "
+                f"requisição, mas {len(plan.visuals)} foram enviadas. Reduza a "
+                "quantidade de referências/frames ou escolha outro modelo.",
                 code="too_many_images",
                 provider=self.provider,
             )
@@ -1823,9 +1842,10 @@ class GeminiAdapter(ProviderAdapter):
             text = _gemini_collect_text(payload)
             raise ApiError(
                 422,
-                "O Gemini não retornou nenhuma imagem. "
-                "Isso pode acontecer por bloqueio de segurança ou por um prompt "
-                "que o modelo interpretou como texto."
+                "O modelo terminou sem devolver imagem. Isso pode ocorrer por "
+                "bloqueio de conteúdo ou por um prompt interpretado como texto. "
+                "Ajuste a descrição/instrução e tente novamente; se persistir, "
+                "escolha outro modelo."
                 + (f" Resposta do modelo: {text}" if text else ""),
                 code="no_image_returned",
                 provider=self.provider,
@@ -1986,16 +2006,17 @@ class OpenAIAdapter(ProviderAdapter):
                 raise ApiError(
                     400,
                     f"O modelo '{model_id}' não aceita imagens de referência. "
-                    "Escolha um modelo GPT Image para transferência de movimento "
-                    "ou correção de frames.",
+                    "Escolha um modelo de edição de imagem para transferir "
+                    "movimento ou corrigir frames.",
                     code="model_without_image_input",
                     provider=self.provider,
                 )
             if len(plan.visuals) > 16:
                 raise ApiError(
                     400,
-                    "A OpenAI aceita no máximo 16 imagens por requisição. "
-                    "Reduza a quantidade de frames e tente novamente.",
+                    f"O modelo aceita no máximo 16 imagens por requisição, mas "
+                    f"{len(plan.visuals)} foram enviadas. Reduza as referências "
+                    "ou escolha outro modelo.",
                     code="too_many_images",
                     provider=self.provider,
                 )
@@ -2039,7 +2060,8 @@ class OpenAIAdapter(ProviderAdapter):
         if not isinstance(payload, dict):
             raise ApiError(
                 502,
-                "A OpenAI retornou uma resposta inesperada.",
+                "O provedor devolveu uma resposta inesperada ou incompleta. "
+                "Tente novamente; se persistir, escolha outro modelo.",
                 code="invalid_provider_response",
                 provider=self.provider,
             )
@@ -2047,8 +2069,9 @@ class OpenAIAdapter(ProviderAdapter):
         if not images:
             raise ApiError(
                 422,
-                "A OpenAI não retornou nenhuma imagem. "
-                "Tente novamente ou ajuste a descrição do personagem/estilo.",
+                "O modelo terminou sem devolver imagem. Ajuste a descrição do "
+                "personagem/estilo ou a instrução de correção e tente novamente; "
+                "se persistir, escolha outro modelo.",
                 code="no_image_returned",
                 provider=self.provider,
             )
@@ -2199,7 +2222,8 @@ class OpenRouterAdapter(ProviderAdapter):
         if not isinstance(payload, dict):
             raise ApiError(
                 502,
-                "O OpenRouter retornou uma resposta inesperada.",
+                "O provedor devolveu uma resposta inesperada ou incompleta. "
+                "Tente novamente; se persistir, escolha outro modelo.",
                 code="invalid_provider_response",
                 provider=self.provider,
             )
@@ -2207,7 +2231,9 @@ class OpenRouterAdapter(ProviderAdapter):
             message = _truncate(str(payload["error"]), 400)
             raise ApiError(
                 502,
-                f"O OpenRouter recusou a geração. {message}",
+                "O provedor recusou a geração. Tente novamente; se persistir, "
+                "confira o modelo escolhido e ajuste o prompt. "
+                f"Detalhe do provedor: {message}",
                 code="provider_error",
                 provider=self.provider,
                 details=message,
@@ -2234,9 +2260,9 @@ class OpenRouterAdapter(ProviderAdapter):
         if not images:
             raise ApiError(
                 422,
-                "O OpenRouter não retornou nenhuma imagem. "
-                "Confira se o modelo escolhido aceita referências visuais e "
-                "tente novamente.",
+                "O modelo terminou sem devolver imagem. Confira se ele aceita "
+                "referências visuais e ajuste o prompt; se persistir, escolha "
+                "outro modelo.",
                 code="no_image_returned",
                 provider=self.provider,
             )
@@ -2300,8 +2326,9 @@ def _replicate_parse_model(model_id: str) -> tuple[str, str, str | None]:
     if "/" not in raw:
         raise ApiError(
             400,
-            "No Replicate, use 'owner/modelo' (modelo oficial) ou "
-            "'owner/modelo:versão'. Exemplo: 'google/nano-banana'.",
+            "O ID do modelo está em formato inválido. Use 'owner/modelo' "
+            "(modelo oficial) ou 'owner/modelo:versão', ou escolha um modelo "
+            "da lista.",
             code="invalid_model_id",
             provider="replicate",
         )
@@ -2310,7 +2337,8 @@ def _replicate_parse_model(model_id: str) -> tuple[str, str, str | None]:
     if not owner or not name:
         raise ApiError(
             400,
-            "O model_id do Replicate deve estar no formato 'owner/modelo'.",
+            "O ID do modelo está em formato inválido. Use 'owner/modelo' ou "
+            "escolha um modelo da lista.",
             code="invalid_model_id",
             provider="replicate",
         )
@@ -2345,8 +2373,9 @@ def _replicate_fetch_schema(
     if not isinstance(schema, dict):
         raise ApiError(
             400,
-            "Não foi possível ler o schema de entrada desse modelo do Replicate. "
-            "Confira se o modelo é público e tem uma versão disponível.",
+            "Não foi possível ler a configuração de entrada do modelo. Confira "
+            "se o ID está correto e se o modelo é público e tem uma versão "
+            "disponível.",
             code="invalid_model_schema",
             provider="replicate",
         )
@@ -2521,7 +2550,8 @@ def _replicate_build_input(
     if not isinstance(props, dict) or not props:
         raise ApiError(
             400,
-            "O schema do modelo do Replicate não expôs os campos de entrada.",
+            "Não foi possível ler os campos de entrada do modelo. Confira o ID "
+            "do modelo ou escolha outro.",
             code="invalid_model_schema",
             provider="replicate",
         )
@@ -2543,8 +2573,8 @@ def _replicate_build_input(
     if not prompt_name:
         raise ApiError(
             400,
-            "Não encontrei um campo de prompt no schema desse modelo do Replicate. "
-            f"Campos disponíveis: {', '.join(props)}.",
+            "O modelo não expõe um campo de prompt compatível. Escolha outro "
+            "modelo de geração/edição de imagem.",
             code="unsupported_model_input",
             provider="replicate",
         )
@@ -2570,9 +2600,8 @@ def _replicate_build_input(
     if plan.visuals and not image_props:
         raise ApiError(
             400,
-            "Este modelo do Replicate não aceita imagens de referência. "
-            "Escolha um modelo de edição (por exemplo, google/nano-banana-2.1 ou "
-            "black-forest-labs/flux-kontext-pro).",
+            "Este modelo não aceita imagens de referência. Escolha um modelo de "
+            "edição de imagem para transferir pose ou corrigir frames.",
             code="model_without_image_input",
             provider="replicate",
         )
@@ -2587,8 +2616,10 @@ def _replicate_build_input(
             if isinstance(max_items, int) and max_items > 0 and len(plan.visuals) > max_items:
                 raise ApiError(
                     400,
-                    f"Este modelo do Replicate aceita no máximo {max_items} imagens "
-                    f"por requisição, mas {len(plan.visuals)} foram enviadas.",
+                    f"Este modelo aceita no máximo {max_items} imagens por "
+                    f"requisição, mas {len(plan.visuals)} foram enviadas. "
+                    "Reduza as referências ou escolha um modelo que aceite mais "
+                    "imagens.",
                     code="too_many_images",
                     provider="replicate",
                 )
@@ -2602,9 +2633,9 @@ def _replicate_build_input(
                 if plan.mode != "correction":
                     raise ApiError(
                         400,
-                        "Este modelo do Replicate aceita apenas uma imagem de "
-                        "referência. Gere um frame por vez ou escolha um modelo "
-                        "multi-imagem.",
+                        "Este modelo aceita apenas uma imagem de referência, mas "
+                        "várias foram enviadas. Gere um frame por vez ou escolha "
+                        "um modelo multi-imagem.",
                         code="too_many_images",
                         provider="replicate",
                     )
@@ -2614,9 +2645,9 @@ def _replicate_build_input(
                 if plan.target_frame_index is None and len(previous_visuals) > 1:
                     raise ApiError(
                         400,
-                        "Este modelo do Replicate aceita apenas uma imagem por vez. "
-                        "Informe 'target_frame_index' para corrigir um frame isolado "
-                        "ou escolha um modelo multi-imagem.",
+                        "Este modelo aceita apenas uma imagem por vez. Corrija "
+                        "um frame isolado por vez ou escolha um modelo "
+                        "multi-imagem.",
                         code="too_many_images",
                         provider="replicate",
                     )
@@ -2634,7 +2665,8 @@ def _replicate_build_input(
         else:
             raise ApiError(
                 400,
-                "Este modelo do Replicate não declarou um campo de imagem compatível.",
+                "O modelo não declarou um campo de imagem compatível. Escolha "
+                "outro modelo de edição de imagem.",
                 code="unsupported_model_input",
                 provider="replicate",
             )
@@ -2686,9 +2718,8 @@ def _replicate_wait(
             _replicate_cancel(api_key, prediction)
             raise ApiError(
                 504,
-                f"O Replicate ainda está processando a imagem com {model_label} e "
-                "o tempo limite foi atingido. Tente novamente ou escolha um "
-                "modelo mais rápido.",
+                f"O provedor não concluiu a geração com {model_label} dentro do "
+                "tempo limite. Tente novamente ou escolha um modelo mais rápido.",
                 code="provider_timeout",
                 provider="replicate",
             )
@@ -2697,7 +2728,8 @@ def _replicate_wait(
         if not isinstance(get_url, str):
             raise ApiError(
                 502,
-                "O Replicate não retornou a URL de acompanhamento da previsão.",
+                "O provedor devolveu uma resposta incompleta (sem URL de "
+                "acompanhamento). Tente novamente.",
                 code="invalid_provider_response",
                 provider="replicate",
             )
@@ -2707,7 +2739,8 @@ def _replicate_wait(
         if not isinstance(prediction, dict):
             raise ApiError(
                 502,
-                "O Replicate retornou uma resposta inesperada.",
+                "O provedor devolveu uma resposta inesperada ou incompleta. "
+                "Tente novamente; se persistir, escolha outro modelo.",
                 code="invalid_provider_response",
                 provider="replicate",
             )
@@ -2719,8 +2752,8 @@ def _replicate_wait(
         if status == "canceled":
             raise ApiError(
                 502,
-                f"A geração com {model_label} no Replicate foi cancelada antes de "
-                "terminar.",
+                f"A geração com {model_label} foi cancelada antes de terminar. "
+                "Tente novamente.",
                 code="generation_canceled",
                 provider="replicate",
                 details=error,
@@ -2728,8 +2761,8 @@ def _replicate_wait(
         if "rate limit" in lowered or "too many requests" in lowered:
             raise ApiError(
                 429,
-                "Limite de requisições atingido no Replicate. "
-                "Aguarde alguns instantes e tente novamente.",
+                "O provedor limitou a quantidade de requisições. "
+                "Aguarde alguns segundos e tente novamente.",
                 code="rate_limit",
                 provider="replicate",
                 details=error,
@@ -2737,17 +2770,17 @@ def _replicate_wait(
         if "nsfw" in lowered or "safety" in lowered:
             raise ApiError(
                 422,
-                "O Replicate bloqueou a geração por segurança. "
-                "Ajuste o personagem, o estilo ou a instrução e tente novamente.",
+                "O provedor bloqueou a geração por política de conteúdo. "
+                "Ajuste a descrição do personagem, o estilo ou a instrução e "
+                "tente novamente.",
                 code="safety_blocked",
                 provider="replicate",
                 details=error,
             )
-        # Modelos oficiais do Google (família Nano Banana) rodam no Replicate
-        # com credenciais internas do próprio Replicate junto ao Google. Quando
-        # essa autenticação quebra, a previsão falha com um erro de JWT do
-        # google-auth ("invalid_grant: Invalid JWT Signature", "RefreshError").
-        # Nada disso depende da chave de API do usuário nem do payload enviado.
+        # O modelo pode depender de uma credencial interna do provedor para
+        # falar com um serviço upstream (ex.: google-auth/RefreshError). Quando
+        # essa autenticação quebra, o erro não tem relação com a chave do
+        # usuário nem com o payload enviado.
         if (
             "invalid_grant" in lowered
             or "invalid jwt" in lowered
@@ -2756,31 +2789,32 @@ def _replicate_wait(
         ):
             raise ApiError(
                 502,
-                "O Replicate não conseguiu autenticar este modelo no Google "
-                "(falha interna do provedor, não é a sua chave de API nem os "
-                "dados enviados). Tente novamente em alguns minutos; se o erro "
-                "continuar, escolha outro modelo ou use o provedor Gemini com "
-                "uma chave do Google AI Studio.",
+                "O provedor não conseguiu autenticar o modelo no serviço "
+                "upstream (falha interna do provedor). Sua chave de API foi "
+                "aceita e os dados enviados não são a causa. Tente novamente em "
+                "alguns minutos; se o erro continuar, escolha outro modelo ou "
+                "outro provedor.",
                 code="provider_auth_failed",
                 provider="replicate",
                 details=error,
             )
-        # Erros internos do modelo (ex.: ModelError E002 do Google/OpenAI dentro
-        # do Replicate). Não dependem da chave do usuário nem do payload: são
-        # falhas transitórias do provedor que outro modelo pode não ter.
+        # Erros internos do modelo (ex.: ModelError E002). Não dependem da chave
+        # do usuário nem do payload: são falhas do provedor/modelo.
         if "e002" in lowered or "modelerror" in lowered:
             raise ApiError(
                 502,
-                f"O Replicate falhou ao executar o modelo {model_label}: erro "
-                "interno do provedor (E002). Tente novamente em instantes ou "
-                "escolha outro modelo.",
+                f"O modelo {model_label} falhou internamente no provedor. Não é "
+                "a sua chave nem os dados enviados. Tente novamente; se o erro "
+                "continuar, escolha outro modelo.",
                 code="provider_model_error",
                 provider="replicate",
                 details=error,
             )
         raise ApiError(
             502,
-            f"O Replicate não conseguiu gerar a imagem com {model_label}: {error}",
+            f"O provedor não conseguiu concluir a geração com {model_label}. "
+            "Tente novamente; se o erro continuar, ajuste o prompt ou escolha "
+            f"outro modelo. Detalhe do provedor: {error}",
             code="generation_failed",
             provider="replicate",
             details=error,
@@ -2913,7 +2947,8 @@ class ReplicateAdapter(ProviderAdapter):
         if not isinstance(prediction, dict):
             raise ApiError(
                 502,
-                "O Replicate retornou uma resposta inesperada.",
+                "O provedor devolveu uma resposta inesperada ou incompleta. "
+                "Tente novamente; se persistir, escolha outro modelo.",
                 code="invalid_provider_response",
                 provider=self.provider,
             )
@@ -2928,8 +2963,9 @@ class ReplicateAdapter(ProviderAdapter):
         if not images:
             raise ApiError(
                 422,
-                "O Replicate não retornou nenhuma imagem. "
-                "Confira o modelo escolhido e tente novamente.",
+                "O modelo terminou sem devolver imagem. Confira se ele aceita "
+                "as referências enviadas e ajuste o prompt; se persistir, "
+                "escolha outro modelo.",
                 code="no_image_returned",
                 provider=self.provider,
             )
@@ -2953,7 +2989,8 @@ def _get_adapter(provider: str) -> ProviderAdapter:
     if adapter is None:
         raise ApiError(
             400,
-            "Provedor não suportado. Use gemini, openai, openrouter ou replicate.",
+            "Provedor não suportado. Escolha Google Gemini, OpenAI, OpenRouter "
+            "ou Replicate.",
             code="unsupported_provider",
         )
     return adapter
@@ -3005,6 +3042,29 @@ async def _api_error_handler(request: Request, exc: ApiError) -> JSONResponse:
     return JSONResponse(status_code=exc.status_code, content=body)
 
 
+def _validation_reason(raw: str) -> str:
+    """Traduz as mensagens mais comuns do validador para algo acionável."""
+    text = (raw or "").strip()
+    lowered = text.lower()
+    if lowered == "field required":
+        return "campo obrigatório não informado"
+    if "at least 1 character" in lowered:
+        return "o valor não pode ficar vazio"
+    if "at most" in lowered and "character" in lowered:
+        return "o valor é maior que o permitido"
+    if "valid integer" in lowered:
+        return "o valor deve ser um número inteiro"
+    if "valid string" in lowered:
+        return "o valor deve ser um texto"
+    if "at least 1 item" in lowered:
+        return "envie ao menos um item"
+    if "at most" in lowered and "item" in lowered:
+        return "há itens demais"
+    if "list" in lowered:
+        return "o valor deve ser uma lista"
+    return text or "valor inválido"
+
+
 @app.exception_handler(RequestValidationError)
 async def _validation_error_handler(
     request: Request, exc: RequestValidationError
@@ -3014,11 +3074,13 @@ async def _validation_error_handler(
     location = ".".join(
         str(part) for part in first.get("loc", []) if part not in ("body",)
     )
-    message = first.get("msg") or "valor inválido"
+    reason = _validation_reason(first.get("msg") or "")
     detail = (
-        f"Parâmetro inválido ({location}): {message}"
+        f"A requisição tem um parâmetro inválido ({location}): {reason}. "
+        "Corrija esse valor e tente novamente."
         if location
-        else f"Requisição inválida: {message}"
+        else f"A requisição tem um parâmetro inválido: {reason}. "
+        "Corrija e tente novamente."
     )
     return JSONResponse(
         status_code=422,
@@ -3033,8 +3095,9 @@ async def _unexpected_error_handler(request: Request, exc: Exception) -> JSONRes
         status_code=500,
         content={
             "detail": (
-                "Erro interno inesperado ao falar com o provedor. "
-                "Tente novamente em instantes."
+                "O servidor encontrou um erro inesperado ao falar com o "
+                "provedor. Tente novamente em instantes; se persistir, "
+                "recarregue a página ou escolha outro modelo."
             ),
             "code": "internal_error",
         },
@@ -3083,8 +3146,9 @@ def generate(payload: GenerateRequest) -> GenerateResponse:
     if total_chars > MAX_TOTAL_BASE64_CHARS:
         raise ApiError(
             413,
-            "As imagens geradas são grandes demais para serem devolvidas pela "
-            "Vercel. Reduza a resolução ou a quantidade de frames e tente novamente.",
+            "As imagens geradas são grandes demais para serem devolvidas pelo "
+            "servidor. Gere em resolução menor ou com menos frames e tente "
+            "novamente.",
             code="response_too_large",
             provider=payload.provider,
         )

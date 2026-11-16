@@ -141,7 +141,7 @@ export async function putLocalImages(key, entries) {
   const list = Array.isArray(entries) ? entries.filter((entry) => entry?.dataUrl) : []
   if (list.length === 0) {
     await deleteLocalImages(key)
-    return
+    return true
   }
 
   try {
@@ -161,8 +161,10 @@ export async function putLocalImages(key, entries) {
     } finally {
       database.close()
     }
+    return true
   } catch (error) {
     console.warn('[local-store]', error)
+    return false
   }
 }
 
@@ -200,7 +202,7 @@ export async function getLocalImages(key) {
   }
 }
 
-/** Apaga as imagens de uma chave. */
+/** Apaga as imagens de uma chave. Devolve `false` se o navegador recusar. */
 export async function deleteLocalImages(key) {
   try {
     const database = await openDatabase()
@@ -211,8 +213,10 @@ export async function deleteLocalImages(key) {
     } finally {
       database.close()
     }
+    return true
   } catch (error) {
     console.warn('[local-store]', error)
+    return false
   }
 }
 
@@ -227,7 +231,9 @@ export async function clearLocalImages() {
     } finally {
       database.close()
     }
+    return true
   } catch (error) {
     console.warn('[local-store]', error)
+    return false
   }
 }

@@ -52,8 +52,9 @@ function ensurePayloadSize(dataUrls) {
   if (chars > MAX_TOTAL_BASE64_CHARS) {
     const megabytes = (chars / 1_000_000).toFixed(1)
     throw new Error(
-      `As imagens somam ${megabytes} MB em Base64 e passam do limite de ~4,5 MB da Vercel. ` +
-        'Reduza a resolução, a quantidade de frames ou desative o auto-fatiar.',
+      `As imagens somam ${megabytes} MB e passam do limite de ~4,5 MB da ` +
+        'requisição. Reduza a resolução, a quantidade de frames ou remova ' +
+        'imagens opcionais e tente novamente.',
     )
   }
 }
@@ -68,20 +69,41 @@ function ensurePayloadSize(dataUrls) {
 function readImageFile(file) {
   return new Promise((resolve, reject) => {
     if (!file || !String(file.type).startsWith('image/')) {
-      reject(new Error('Selecione um arquivo de imagem (PNG, WebP, GIF ou JPEG).'))
+      reject(
+        new Error(
+          'O arquivo escolhido não é uma imagem. Use PNG, WebP, GIF ou JPEG.',
+        ),
+      )
       return
     }
     if (file.size > MAX_UPLOAD_BYTES) {
-      reject(new Error('A imagem tem mais de 8 MB. Reduza o arquivo antes de enviar.'))
+      reject(
+        new Error(
+          'A imagem tem mais de 8 MB. Reduza o arquivo (ou a resolução) e ' +
+            'tente novamente.',
+        ),
+      )
       return
     }
 
     const reader = new FileReader()
-    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo escolhido.'))
+    reader.onerror = () =>
+      reject(
+        new Error(
+          'Não foi possível ler o arquivo. Ele pode estar corrompido ou ' +
+            'bloqueado pelo navegador.',
+        ),
+      )
     reader.onload = () => {
       const originalUrl = String(reader.result || '')
       const image = new Image()
-      image.onerror = () => reject(new Error('O arquivo escolhido não é uma imagem válida.'))
+      image.onerror = () =>
+        reject(
+          new Error(
+            'O arquivo não é uma imagem válida ou está corrompido. ' +
+              'Tente outro arquivo.',
+          ),
+        )
       image.onload = () => {
         const width = image.naturalWidth || image.width
         const height = image.naturalHeight || image.height
@@ -407,6 +429,23 @@ export default function MainDashboard() {
     setToasts((current) => current.filter((toast) => toast.id !== id))
   }, [])
 
+  // Avisa uma vez por sessão se o navegador recusar a gravação local (cota
+  // cheia, modo privado ou armazenamento bloqueado).
+  const localSaveWarned = useRef(false)
+  const warnLocalSaveFailure = useCallback(
+    (action) => {
+      if (localSaveWarned.current) return
+      localSaveWarned.current = true
+      pushToast(
+        `Não foi possível ${action} neste dispositivo. O armazenamento do ` +
+          'navegador pode estar cheio ou bloqueado: libere espaço ou limpe os ' +
+          'dados do site e tente novamente.',
+        'warning',
+      )
+    },
+    [pushToast],
+  )
+
   /** Chama a API e registra as métricas da resposta no histórico. */
   const generateAndTrack = useCallback(
     async (input) => {
@@ -469,8 +508,10 @@ export default function MainDashboard() {
     void putLocalImages(
       LOCAL_IMAGE_KEYS.generated,
       generatedSheets.map((dataUrl) => ({ dataUrl })),
-    )
-  }, [generatedSheets])
+    ).then((ok) => {
+      if (!ok) warnLocalSaveFailure('salvar o resultado gerado')
+    })
+  }, [generatedSheets, warnLocalSaveFailure])
 
   // Restaura, uma única vez ao abrir, as imagens salvas neste navegador.
   useEffect(() => {
@@ -528,7 +569,16 @@ export default function MainDashboard() {
   }, [pushToast])
 
   const handleClearLocalImages = useCallback(async () => {
-    await clearLocalImages()
+    const ok = await clearLocalImages()
+    if (!ok) {
+      pushToast(
+        'Não foi possível apagar as imagens salvas. O armazenamento do ' +
+          'navegador pode estar bloqueado; limpe os dados do site pelas ' +
+          'configurações do navegador.',
+        'error',
+      )
+      return
+    }
     pushToast(
       'Imagens salvas neste dispositivo foram apagadas. A tela atual continua ' +
         'até você recarregar ou gerar novamente.',
@@ -614,7 +664,10 @@ export default function MainDashboard() {
       gridRows > 64
     ) {
       setReferenceFrames([reference.dataUrl])
-      setReferenceError('Informe colunas e linhas entre 1 e 64 para fatiar a grade.')
+      setReferenceError(
+        'A grade precisa de colunas e linhas entre 1 e 64. Ajuste os valores ' +
+          'para recortar a referência.',
+      )
       return undefined
     }
 
@@ -625,7 +678,12 @@ export default function MainDashboard() {
       try {
         const sliced = await sliceSpritesheet(reference.dataUrl, gridColumns, gridRows)
         if (cancelled) return
-        if (sliced.length === 0) throw new Error('A grade não gerou nenhum frame.')
+        if (sliced.length === 0) {
+          throw new Error(
+            'A grade não gerou nenhum frame. Confira Colunas/Linhas e tente ' +
+              'novamente.',
+          )
+        }
         setReferenceFrames(sliced)
       } catch (error) {
         if (cancelled) return
@@ -983,7 +1041,9 @@ export default function MainDashboard() {
               kind: 'file',
             },
           },
-        ])
+        ]).then((ok) => {
+          if (!ok) warnLocalSaveFailure('salvar a referência de pose')
+        })
         setColumns(String(detected.columns))
         setRows(String(detected.rows))
         setAutoSlice(total > 1)
@@ -1013,7 +1073,7 @@ export default function MainDashboard() {
         pushToast(describeApiError(error), 'error')
       }
     },
-    [pushToast],
+    [pushToast, warnLocalSaveFailure],
   )
 
   const handleClearReference = useCallback(() => {
@@ -1045,13 +1105,15 @@ export default function MainDashboard() {
               name: file.name,
             },
           },
-        ])
+        ]).then((ok) => {
+          if (!ok) warnLocalSaveFailure('salvar a referência de estilo')
+        })
         pushToast('Imagem de referência de estilo carregada.', 'success')
       } catch (error) {
         pushToast(describeApiError(error), 'error')
       }
     },
-    [pushToast],
+    [pushToast, warnLocalSaveFailure],
   )
 
   const handleClearStyleReference = useCallback(() => {
@@ -1078,13 +1140,15 @@ export default function MainDashboard() {
               name: file.name,
             },
           },
-        ])
+        ]).then((ok) => {
+          if (!ok) warnLocalSaveFailure('salvar a referência de aparência')
+        })
         pushToast('Imagem de referência de aparência carregada.', 'success')
       } catch (error) {
         pushToast(describeApiError(error), 'error')
       }
     },
-    [pushToast],
+    [pushToast, warnLocalSaveFailure],
   )
 
   const handleClearAppearanceReference = useCallback(() => {
@@ -1200,7 +1264,9 @@ export default function MainDashboard() {
       if (!result || !Array.isArray(result.images)) {
         setGenerating(false)
         setFrames([])
-        const message = 'A API não retornou um resultado válido.'
+        const message =
+          'O servidor devolveu um resultado que o app não conseguiu ' +
+          'interpretar. Tente novamente; se persistir, recarregue a página.'
         setGenerationError(message)
         pushToast(message, 'error')
         return
@@ -1209,7 +1275,9 @@ export default function MainDashboard() {
       if (result.images.length === 0) {
         setGenerating(false)
         setFrames([])
-        const message = 'A IA não retornou nenhuma imagem. Tente outro modelo ou prompt.'
+        const message =
+          'O modelo terminou sem devolver imagem. Ajuste o prompt ou escolha ' +
+          'outro modelo e tente novamente.'
         setGenerationError(message)
         pushToast(message, 'error')
         return
@@ -1300,19 +1368,33 @@ export default function MainDashboard() {
         setExportColumns(String(Math.min(4, nextFrames.length)))
       } catch (error) {
         console.error('[recompile-sheet]', error)
+        pushToast(
+          'A correção foi aplicada, mas não foi possível remontar a ' +
+            'spritesheet. Tente novamente ou exporte os frames ' +
+            'individualmente.',
+          'error',
+        )
       }
     },
-    [columns],
+    [columns, pushToast],
   )
 
   const handleApplyCorrection = useCallback(async () => {
     if (correcting || frames.length === 0) return
     if (!correctionPrompt.trim()) {
-      pushToast('Escreva a instrução de correção antes de aplicar.', 'warning')
+      pushToast(
+        'A instrução de correção está vazia. Descreva o que deve ser corrigido ' +
+          'e tente novamente.',
+        'warning',
+      )
       return
     }
     if (!apiKey.trim() || !modelId) {
-      pushToast('Valide a chave e escolha um modelo antes de corrigir.', 'warning')
+      pushToast(
+        'A chave de API ou o modelo ainda não estão prontos. Valide a chave e ' +
+          'escolha um modelo antes de corrigir.',
+        'warning',
+      )
       return
     }
 
@@ -1467,11 +1549,19 @@ export default function MainDashboard() {
     )
       return
     if (!modalPrompt.trim()) {
-      pushToast('Escreva a instrução de correção antes de aplicar.', 'warning')
+      pushToast(
+        'A instrução de correção está vazia. Descreva o que deve ser corrigido ' +
+          'e tente novamente.',
+        'warning',
+      )
       return
     }
     if (!apiKey.trim() || !modelId) {
-      pushToast('Valide a chave e escolha um modelo antes de corrigir.', 'warning')
+      pushToast(
+        'A chave de API ou o modelo ainda não estão prontos. Valide a chave e ' +
+          'escolha um modelo antes de corrigir.',
+        'warning',
+      )
       return
     }
 
@@ -1522,7 +1612,8 @@ export default function MainDashboard() {
 
       if (result.images.length === 0) {
         throw new Error(
-          'A IA não retornou nenhuma imagem corrigida. Tente novamente.',
+          'O provedor não devolveu a imagem corrigida. Tente novamente; se ' +
+            'persistir, escolha outro modelo.',
         )
       }
 
@@ -1600,11 +1691,19 @@ export default function MainDashboard() {
     )
       return
     if (!modalPrompt.trim()) {
-      pushToast('Escreva a instrução de correção antes de aplicar.', 'warning')
+      pushToast(
+        'A instrução de correção está vazia. Descreva o que deve ser corrigido ' +
+          'e tente novamente.',
+        'warning',
+      )
       return
     }
     if (!apiKey.trim() || !modelId) {
-      pushToast('Valide a chave e escolha um modelo antes de corrigir.', 'warning')
+      pushToast(
+        'A chave de API ou o modelo ainda não estão prontos. Valide a chave e ' +
+          'escolha um modelo antes de corrigir.',
+        'warning',
+      )
       return
     }
 
@@ -1659,7 +1758,8 @@ export default function MainDashboard() {
 
       if (result.images.length === 0) {
         throw new Error(
-          'A IA não retornou nenhuma imagem corrigida. Tente novamente.',
+          'O provedor não devolveu a imagem corrigida. Tente novamente; se ' +
+            'persistir, escolha outro modelo.',
         )
       }
 

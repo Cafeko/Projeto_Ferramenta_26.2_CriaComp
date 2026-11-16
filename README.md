@@ -259,32 +259,40 @@ Para exibir no frontend:
 
 ### Erros
 
-Todas as falhas previstas voltam com uma mensagem em português e um `code`:
+Todas as falhas previstas voltam com uma mensagem em português no mesmo
+formato: **o que aconteceu** e **o que fazer em seguida**. A mensagem não
+depende de um provedor específico; quando ajuda, cita o modelo ou o provedor.
 
 ```json
 {
-  "detail": "Chave de API inválida ou sem permissão no OpenAI. Confira a chave...",
+  "detail": "A chave de API foi recusada pelo provedor (inválida, expirada ou sem permissão). Confira a chave no painel do provedor, valide novamente e, se necessário, gere uma nova.",
   "code": "invalid_api_key",
   "provider": "openai",
   "provider_status": 401
 }
 ```
 
-Códigos comuns: `invalid_api_key`, `quota_exhausted`, `rate_limit`,
-`provider_timeout`, `provider_auth_failed`, `provider_model_error`,
-`no_image_returned`, `model_without_image_input`, `too_many_images`,
-`payload_too_large`, `invalid_image` e `target_frame_index_out_of_range`.
+| Categoria | Códigos | O que a mensagem indica |
+|---|---|---|
+| Chave/conta | `invalid_api_key`, `quota_exhausted`, `rate_limit` | chave recusada, sem saldo/cota ou requisições demais |
+| Imagens | `invalid_image`, `image_too_large`, `payload_too_large`, `missing_images`, `missing_previous_images`, `too_many_images`, `invalid_provider_image`, `empty_provider_image`, `provider_image_too_large`, `download_failed`, `download_timeout` | arquivo inválido/grande, limite de tamanho, quantidade de referências ou falha ao baixar a imagem gerada |
+| Requisição | `invalid_request`, `validation_error`, `invalid_target_frame`, `target_frame_index_out_of_range` | parâmetro inválido ou combinação incorreta |
+| Modelo | `model_not_found`, `invalid_model_id`, `invalid_model_schema`, `unsupported_model_input`, `model_without_image_input`, `provider_model_error`, `no_image_returned` | modelo inexistente, incompatível, que falhou ou terminou sem imagem |
+| Provedor | `provider_auth_failed`, `provider_unavailable`, `provider_timeout`, `generation_failed`, `generation_canceled`, `safety_blocked`, `connection_error`, `network_error`, `invalid_provider_response`, `provider_error` | falha interna, indisponibilidade, limite ou bloqueio do provedor |
+| Servidor | `internal_error`, `response_too_large` | erro inesperado do backend ou resposta grande demais |
 
-`provider_model_error` (somente Replicate) indica que o modelo falhou dentro do
-provedor (por exemplo, `ModelError: An error occurred while processing your
-request (E002)`). Costuma ser transitório; a mensagem diz qual modelo falhou e o
-usuário decide se tenta de novo ou troca de modelo.
+`provider_auth_failed` indica que o provedor não conseguiu autenticar o modelo
+num serviço upstream (credencial interna dele). **Não é a sua chave** nem os
+dados enviados: tente novamente em alguns minutos, escolha outro modelo ou outro
+provedor.
 
-`provider_auth_failed` (somente Replicate) indica que o próprio Replicate não
-conseguiu autenticar o modelo junto ao Google — por exemplo, os modelos
-`google/nano-banana*`, que dependem de credenciais internas do Replicate. Não é
-problema da sua chave de API: use outro modelo (FLUX, Seedream, GPT Image) ou o
-provedor Gemini direto. O backend não troca o modelo por conta própria.
+`provider_model_error` indica que o modelo falhou internamente no provedor
+(ex.: `ModelError ... E002`). Também não é a sua chave; tente novamente ou troque
+de modelo.
+
+O backend **nunca troca o modelo escolhido**; o erro volta para o usuário
+decidir. Os detalhes técnicos do provedor (`details`) acompanham a resposta para
+diagnóstico, mas a mensagem principal é sempre acionável.
 
 ### Página de teste (laboratório)
 
