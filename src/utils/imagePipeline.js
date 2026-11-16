@@ -222,7 +222,8 @@ function loadImageElement(url, label) {
     image.onerror = () =>
       reject(
         new ImagePipelineError(
-          `Não foi possível carregar ${label}. Verifique se o arquivo é uma imagem válida.`,
+          `Não foi possível carregar ${label}. O arquivo pode estar corrompido ` +
+            'ou em um formato não suportado; reenvie como PNG, JPEG, WebP ou GIF.',
           { code: 'IMAGE_LOAD_FAILED' },
         ),
       )
@@ -247,7 +248,8 @@ async function loadDrawable(source, label) {
     const height = image.naturalHeight || image.height
     if (!width || !height) {
       throw new ImagePipelineError(
-        `${label} carregou com dimensões inválidas.`,
+        `${label} carregou sem dimensões válidas. Reenvie o arquivo ou use ` +
+          'outra imagem.',
         { code: 'INVALID_IMAGE' },
       )
     }
@@ -256,7 +258,7 @@ async function loadDrawable(source, label) {
 
   if (typeof Blob !== 'undefined' && source instanceof Blob) {
     if (source.size === 0) {
-      throw new ImagePipelineError(`${label} está vazio (0 bytes).`, {
+      throw new ImagePipelineError(`${label} está vazio (0 bytes). Reenvie o arquivo.`, {
         code: 'INVALID_IMAGE',
       })
     }
@@ -284,7 +286,8 @@ async function loadDrawable(source, label) {
       const height = image.naturalHeight || image.height
       if (!width || !height) {
         throw new ImagePipelineError(
-          `${label} carregou com dimensões inválidas.`,
+          `${label} carregou sem dimensões válidas. Reenvie o arquivo ou use ` +
+            'outra imagem.',
           { code: 'INVALID_IMAGE' },
         )
       }
@@ -309,7 +312,8 @@ async function loadDrawable(source, label) {
   }
 
   throw new ImagePipelineError(
-    `${label} não é um arquivo, Data URL ou elemento de imagem válido.`,
+    `${label} não é um arquivo, Data URL ou elemento de imagem válido. ` +
+      'Use PNG, JPEG, WebP ou GIF.',
     { code: 'INVALID_IMAGE' },
   )
 }
@@ -535,7 +539,7 @@ export async function sliceSpritesheet(imageFile, columns, rows) {
     if (sheet.width < cols || sheet.height < rws) {
       throw new ImagePipelineError(
         `A imagem (${sheet.width}x${sheet.height}) é pequena demais para uma ` +
-          `grade de ${cols}x${rws}.`,
+          `grade de ${cols}x${rws}. Reduza Colunas/Linhas ou use uma imagem maior.`,
         { code: 'INVALID_GRID' },
       )
     }
@@ -641,7 +645,8 @@ export async function alignBoundingBox(base64Frame, options = {}) {
     const bounds = findAlphaBounds(imageData, threshold)
     if (!bounds) {
       throw new ImagePipelineError(
-        'O frame está totalmente transparente: não há sprite para alinhar.',
+        'O frame está totalmente transparente: não há sprite para alinhar. ' +
+          'Gere novamente ou use outro frame.',
         { code: 'EMPTY_FRAME' },
       )
     }

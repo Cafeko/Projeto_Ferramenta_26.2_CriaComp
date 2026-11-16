@@ -83,7 +83,8 @@ async function postJson(path, body) {
     })
   } catch {
     throw new ApiRequestError(
-      'Não foi possível falar com o backend. Verifique sua conexão e tente de novo.',
+      'Não foi possível falar com o servidor do app. Verifique sua internet e ' +
+        'tente novamente.',
       { code: 'network_error' },
     )
   }
@@ -105,12 +106,14 @@ async function postJson(path, body) {
         : null
     const fallbackByStatus =
       response.status === 413
-        ? 'O conjunto de imagens passou do limite de tamanho da Vercel. Reduza a quantidade ou a resolução dos frames.'
+        ? 'O conjunto de imagens passou do limite de tamanho da requisição. Reduza a resolução ou a quantidade de frames e tente novamente.'
         : response.status === 504
-          ? 'A geração demorou demais e foi interrompida. Tente novamente com menos frames.'
+          ? 'A geração demorou mais que o limite e foi interrompida. Tente novamente ou escolha um modelo mais rápido.'
           : response.status >= 500
-            ? 'O backend falhou ao processar o pedido. Tente novamente em alguns instantes.'
-            : `A API respondeu com status ${response.status}.`
+            ? data === null
+              ? 'O servidor do app não respondeu. Se estiver rodando localmente, inicie a API junto com o frontend (ex.: npm run dev:all) e tente novamente.'
+              : 'O servidor falhou ao processar o pedido. Tente novamente em instantes; se persistir, recarregue a página.'
+            : `A API respondeu com status ${response.status}. Tente novamente.`
 
     throw new ApiRequestError(detail || fallbackByStatus, {
       status: response.status,
@@ -121,12 +124,22 @@ async function postJson(path, body) {
 
   if (!data) {
     throw new ApiRequestError(
-      'O backend respondeu sem um JSON válido. Verifique se a API está no ar.',
+      'O servidor respondeu sem um JSON válido. Recarregue a página e tente novamente.',
       { status: response.status, code: 'invalid_response' },
     )
   }
 
   return data
+}
+
+/** Identifica o provedor provável pelo prefixo da chave de API. */
+function detectKeyProvider(apiKey) {
+  const trimmed = String(apiKey || '').trim()
+  if (trimmed.startsWith('AIza')) return 'gemini'
+  if (trimmed.startsWith('sk-or-')) return 'openrouter'
+  if (trimmed.startsWith('r8_')) return 'replicate'
+  if (trimmed.startsWith('sk-')) return 'openai'
+  return null
 }
 
 /**
@@ -135,10 +148,35 @@ async function postJson(path, body) {
  * @param {{ provider: string, apiKey: string }} input
  */
 export async function listModels({ provider, apiKey }) {
-  const data = await postJson('/api/models', {
-    provider,
-    api_key: apiKey,
-  })
+  let data
+  try {
+    data = await postJson('/api/models', {
+      provider,
+      api_key: apiKey,
+    })
+  } catch (error) {
+    if (
+      error instanceof ApiRequestError &&
+      (error.code === 'invalid_api_key' ||
+        error.status === 400 ||
+        error.status === 401)
+    ) {
+      const guessedId = detectKeyProvider(apiKey)
+      if (guessedId && guessedId !== provider) {
+        const guessedLabel =
+          PROVIDERS.find((item) => item.id === guessedId)?.label || guessedId
+        throw new ApiRequestError(
+          `${error.message} Dica: o formato dessa chave parece ser do provedor ${guessedLabel}; confira se o provedor selecionado acima está correto.`,
+          {
+            status: error.status,
+            code: error.code,
+            provider: error.provider,
+          },
+        )
+      }
+    }
+    throw error
+  }
 
   return {
     provider: data.provider || provider,

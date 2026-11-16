@@ -204,7 +204,7 @@ export function SecondaryButton({
 /**
  * Selo compacto usado nos cabeçalhos.
  *
- * @param {{ children: import('react').ReactNode, tone?: 'neutral' | 'cyan' | 'green' | 'amber' | 'violet' }} props
+ * @param {{ children: import('react').ReactNode, tone?: 'neutral' | 'cyan' | 'green' | 'amber' | 'violet' | 'red' }} props
  */
 export function Pill({ children, tone = 'neutral' }) {
   const tones = {
@@ -213,6 +213,7 @@ export function Pill({ children, tone = 'neutral' }) {
     green: 'border-emerald-400/25 bg-emerald-400/10 text-emerald-300',
     amber: 'border-amber-400/25 bg-amber-400/10 text-amber-300',
     violet: 'border-violet-400/25 bg-violet-400/10 text-violet-300',
+    red: 'border-rose-400/25 bg-rose-400/10 text-rose-300',
   }
   return (
     <span

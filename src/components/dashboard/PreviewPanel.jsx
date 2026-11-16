@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ChevronLeft,
   ChevronRight,
@@ -9,12 +11,47 @@ import {
   Maximize2 as Maximize,
   RefreshCw,
   Square,
+  X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react'
 
 import { Alert, Card, Pill, inputClass, labelClass } from './ui'
 
+const MIN_ZOOM = 1
+const MAX_ZOOM = 8
+const MAX_PAN = 1.5
+
+function clampPan(value) {
+  return Math.min(MAX_PAN, Math.max(-MAX_PAN, value))
+}
+
+/**
+ * Roda do mouse com `preventDefault` (o React registra wheel como passivo).
+ * Mantém o callback atual em uma ref para não reanexar o listener a cada zoom.
+ */
+function useWheelZoom(ref, onStep, enabled = true) {
+  const stepRef = useRef(onStep)
+  stepRef.current = onStep
+
+  useEffect(() => {
+    const element = ref.current
+    if (!enabled || !element) return undefined
+    const handle = (event) => {
+      event.preventDefault()
+      stepRef.current(event.deltaY < 0 ? 1 : -1)
+    }
+    element.addEventListener('wheel', handle, { passive: false })
+    return () => element.removeEventListener('wheel', handle)
+  }, [ref, enabled])
+}
+
 /**
  * Um dos lados do player (referência ou resultado) para UM frame.
+ *
+ * O quadro tem zoom, arraste e tela cheia para inspecionar frames que não
+ * cabem ou que têm detalhes pequenos. O zoom/posição é mantido ao navegar
+ * entre frames e é redefinido quando o tamanho da imagem muda.
  *
  * @param {{
  *   label: string,
@@ -25,9 +62,30 @@ import { Alert, Card, Pill, inputClass, labelClass } from './ui'
  *   loading: boolean,
  *   loadingLabel: string,
  *   emptyLabel: string,
+ *   viewMode: 'loop' | 'frame-by-frame',
+ *   onViewModeChange: (value: 'loop' | 'frame-by-frame') => void,
+ *   fps: number,
+ *   onFpsChange: (value: number) => void,
+ *   onPrev: () => void,
+ *   onNext: () => void,
  * }} props
  */
-function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loadingLabel, emptyLabel }) {
+function FrameView({
+  label,
+  accent,
+  frame,
+  frameIndex,
+  totalFrames,
+  loading,
+  loadingLabel,
+  emptyLabel,
+  viewMode,
+  onViewModeChange,
+  fps,
+  onFpsChange,
+  onPrev,
+  onNext,
+}) {
   const accentUi =
     accent === 'cyan'
       ? 'border-cyan-400/25 bg-cyan-400/[0.04]'
@@ -35,6 +93,222 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
 
   const safeTotal = Math.max(1, Math.floor(totalFrames || 0))
   const safeIndex = Math.max(0, Math.min(Math.floor(frameIndex || 0), safeTotal - 1))
+
+  const [zoom, setZoom] = useState(1)
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [expanded, setExpanded] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const dragRef = useRef(null)
+  const inlineRef = useRef(null)
+  const fullscreenRef = useRef(null)
+  const lastSizeRef = useRef('')
+  const hasFrame = Boolean(frame)
+  // Mantém os callbacks de navegação atuais sem reanexar o listener de teclado.
+  const navRef = useRef({ onPrev, onNext })
+  navRef.current = { onPrev, onNext }
+
+  const resetView = () => {
+    setZoom(1)
+    setOffset({ x: 0, y: 0 })
+  }
+
+  // Atualização funcional: cliques/scroll rápidos não perdem o zoom anterior.
+  const zoomBy = (factor) => {
+    setZoom((current) =>
+      Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, current * factor)),
+    )
+  }
+  const wheelStep = (direction) => zoomBy(direction > 0 ? 1.15 : 1 / 1.15)
+
+  // Ao voltar para 100%, recentraliza a imagem.
+  useEffect(() => {
+    if (zoom !== MIN_ZOOM) return
+    setOffset((current) =>
+      current.x === 0 && current.y === 0 ? current : { x: 0, y: 0 },
+    )
+  }, [zoom])
+
+  useWheelZoom(inlineRef, wheelStep)
+  useWheelZoom(fullscreenRef, wheelStep, expanded)
+
+  const startDrag = (event) => {
+    if (!hasFrame) return
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    event.preventDefault()
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+    } catch {
+      // Ponteiro sintético/antigo: o arraste continua via eventos normais.
+    }
+    dragRef.current = {
+      x: event.clientX,
+      y: event.clientY,
+      ox: offset.x,
+      oy: offset.y,
+    }
+    setDragging(true)
+  }
+
+  const moveDrag = (event) => {
+    const drag = dragRef.current
+    if (!drag) return
+    const rect = event.currentTarget.getBoundingClientRect()
+    setOffset({
+      x: clampPan(drag.ox + (event.clientX - drag.x) / Math.max(1, rect.width)),
+      y: clampPan(drag.oy + (event.clientY - drag.y) / Math.max(1, rect.height)),
+    })
+  }
+
+  const endDrag = (event) => {
+    if (!dragRef.current) return
+    dragRef.current = null
+    setDragging(false)
+    try {
+      event.currentTarget.releasePointerCapture?.(event.pointerId)
+    } catch {
+      // Ignora ponteiros que não estavam capturados.
+    }
+  }
+
+  const handleImageLoad = (event) => {
+    const image = event.currentTarget
+    const size = `${image.naturalWidth}x${image.naturalHeight}`
+    // Uma imagem nova com outras dimensões recomeça enquadrada.
+    if (lastSizeRef.current && lastSizeRef.current !== size) resetView()
+    lastSizeRef.current = size
+  }
+
+  useEffect(() => {
+    if (!expanded) return undefined
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setExpanded(false)
+        return
+      }
+      const tag = event.target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (event.key === 'ArrowLeft') navRef.current.onPrev?.()
+      else if (event.key === 'ArrowRight') navRef.current.onNext?.()
+      else if (event.key === '+' || event.key === '=') zoomBy(1.25)
+      else if (event.key === '-') zoomBy(1 / 1.25)
+      else if (event.key === '0') resetView()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
+    // As funções usam o zoom atual; o efeito é reanexado quando ele muda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, zoom])
+
+  const transformStyle = {
+    transform: `translate(${offset.x * 100}%, ${offset.y * 100}%) scale(${zoom})`,
+    transformOrigin: 'center center',
+    transition: dragging ? 'none' : 'transform 80ms ease-out',
+  }
+
+  const controls = (fullscreen = false) => (
+    <div
+      className={`flex items-center gap-0.5 rounded-md border border-white/10 bg-black/70 px-0.5 py-0.5 text-slate-300 backdrop-blur ${
+        fullscreen
+          ? ''
+          : 'pointer-events-none absolute top-1.5 right-1.5 z-10 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100'
+      }`}
+      onPointerDown={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={() => zoomBy(1 / 1.25)}
+        title="Diminuir zoom"
+        aria-label="Diminuir zoom"
+        className="grid size-6 place-items-center rounded transition hover:bg-white/10"
+      >
+        <ZoomOut className="size-3" />
+      </button>
+      <button
+        type="button"
+        onClick={resetView}
+        title="Redefinir zoom e posição"
+        aria-label="Redefinir zoom e posição"
+        className="min-w-11 rounded px-1 py-1 font-mono text-[10px] tabular-nums text-slate-300 transition hover:bg-white/10"
+      >
+        {Math.round(zoom * 100)}%
+      </button>
+      <button
+        type="button"
+        onClick={() => zoomBy(1.25)}
+        title="Aumentar zoom"
+        aria-label="Aumentar zoom"
+        className="grid size-6 place-items-center rounded transition hover:bg-white/10"
+      >
+        <ZoomIn className="size-3" />
+      </button>
+      {!fullscreen && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          title="Ver em tela cheia"
+          aria-label="Ver em tela cheia"
+          className="grid size-6 place-items-center rounded transition hover:bg-white/10"
+        >
+          <Maximize className="size-3" />
+        </button>
+      )}
+    </div>
+  )
+
+  const viewer = (ref, fullscreen = false) => (
+    <div
+      ref={ref}
+      data-frame-viewer={fullscreen ? 'fullscreen' : 'inline'}
+      className={`group bg-checkerboard relative overflow-hidden border border-white/5 ${
+        fullscreen
+          ? 'min-h-0 flex-1 rounded-xl border-white/10'
+          : 'h-64 rounded-lg sm:h-72'
+      } ${hasFrame ? 'cursor-grab touch-none select-none' : ''} ${
+        dragging ? 'cursor-grabbing' : ''
+      }`}
+      onPointerDown={startDrag}
+      onPointerMove={moveDrag}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onDoubleClick={resetView}
+    >
+      {hasFrame ? (
+        <img
+          src={String(frame)}
+          alt={label}
+          draggable={false}
+          data-frame-image="true"
+          onLoad={handleImageLoad}
+          className="pixelated pointer-events-none absolute inset-0 h-full w-full object-contain select-none"
+          style={transformStyle}
+        />
+      ) : (
+        <div className="grid h-full place-items-center">
+          <div className="flex max-w-[80%] flex-col items-center justify-center text-center">
+            <ImageOff className="size-6 text-slate-600" />
+            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">
+              {emptyLabel}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {hasFrame && controls(fullscreen)}
+
+      {loading && !fullscreen && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-canvas/80 backdrop-blur-sm">
+          <span className="size-6 animate-spin text-cyan-300" />
+          <p className="text-[11px] font-medium text-cyan-200">{loadingLabel}</p>
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <div className={`rounded-xl border p-2.5 ${accentUi}`}>
@@ -52,27 +326,103 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
         </span>
       </div>
 
-      <div className="bg-checkerboard relative grid h-64 place-items-center overflow-hidden rounded-lg border border-white/5 sm:h-72">
-        {frame ? (
-          <img
-            src={String(frame)}
-            alt={label}
-            className="pixelated max-h-full max-w-full object-contain"
-          />
-        ) : (
-          <div className="flex max-w-[80%] flex-col items-center justify-center text-center">
-            <ImageOff className="size-6 text-slate-600" />
-            <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{emptyLabel}</p>
-          </div>
-        )}
+      {viewer(inlineRef)}
 
-        {loading && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-canvas/80 backdrop-blur-sm">
-            <span className="size-6 animate-spin text-cyan-300" />
-            <p className="text-[11px] font-medium text-cyan-200">{loadingLabel}</p>
-          </div>
+      {expanded &&
+        createPortal(
+          <div className="fixed inset-0 z-[100] flex flex-col bg-[#070b12]/98 p-3 sm:p-4">
+            <div className="mb-2 flex items-center justify-between gap-3 px-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-semibold tracking-wide text-slate-200 uppercase">
+                  {label}
+                </span>
+                <span className="font-mono text-[10px] text-slate-500">
+                  {safeTotal > 0 ? `${safeIndex + 1}/${safeTotal}` : '—'}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                {controls(true)}
+                <button
+                  type="button"
+                  onClick={() => setExpanded(false)}
+                  title="Fechar (Esc)"
+                  aria-label="Fechar tela cheia"
+                  className="grid size-7 place-items-center rounded-md border border-white/10 bg-black/70 text-slate-300 transition hover:bg-white/10"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            </div>
+
+            {viewer(fullscreenRef, true)}
+
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => navRef.current.onPrev?.()}
+                disabled={safeTotal === 0}
+                className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/40 px-2 py-1 text-[10px] font-semibold text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft className="size-3.5" />
+                Anterior
+              </button>
+              <button
+                type="button"
+                onClick={() => navRef.current.onNext?.()}
+                disabled={safeTotal === 0}
+                className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/40 px-2 py-1 text-[10px] font-semibold text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Próximo
+                <ChevronRight className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onViewModeChange?.(
+                    viewMode === 'loop' ? 'frame-by-frame' : 'loop',
+                  )
+                }
+                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
+                  viewMode === 'loop'
+                    ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
+                    : 'border-white/10 bg-black/40 text-slate-300 hover:bg-white/10'
+                }`}
+              >
+                {viewMode === 'loop' ? (
+                  <RefreshCw className="size-3.5" />
+                ) : (
+                  <Square className="size-3.5" />
+                )}
+                {viewMode === 'loop' ? 'Loop' : 'Frame a frame'}
+              </button>
+              {viewMode === 'loop' && (
+                <label className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-slate-400">
+                  FPS
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={fps}
+                    aria-label="Quadros por segundo"
+                    onChange={(event) => {
+                      const value = Number.parseInt(event.target.value, 10)
+                      if (Number.isFinite(value)) {
+                        onFpsChange?.(Math.min(60, Math.max(1, value)))
+                      }
+                    }}
+                    className="w-14 rounded-md border border-white/10 bg-black/40 px-1.5 py-1 font-mono text-[10px] text-slate-100 focus:border-cyan-400/60 focus:outline-none"
+                  />
+                </label>
+              )}
+            </div>
+
+            <p className="mt-1.5 text-center text-[10px] text-slate-600">
+              Arraste para mover · ←/→ troca de frame · +/− zoom · duplo
+              clique/0 redefine · Esc sai
+            </p>
+          </div>,
+          document.body,
         )}
-      </div>
     </div>
   )
 }
@@ -135,6 +485,16 @@ export default function PreviewPanel({
   const hasFrames = gens.length > 0
   const hasReference = refs.length > 0
 
+  // Navegação circular: do último vai para o primeiro e vice-versa.
+  const goPrev = () => {
+    if (totalFrames === 0) return
+    onCurrentFrameIndexChange((safeIndex - 1 + totalFrames) % totalFrames)
+  }
+  const goNext = () => {
+    if (totalFrames === 0) return
+    onCurrentFrameIndexChange((safeIndex + 1) % totalFrames)
+  }
+
   // Os frames já chegam fatiados do MainDashboard. A grade é recalculada lá
   // a partir do spritesheet bruto, então trocar colunas/linhas não apaga nada.
   const displayFrames = gens
@@ -165,8 +525,8 @@ export default function PreviewPanel({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => onCurrentFrameIndexChange(Math.max(0, safeIndex - 1))}
-              disabled={safeIndex === 0 || totalFrames === 0}
+              onClick={goPrev}
+              disabled={totalFrames === 0}
               className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-semibold text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronLeft className="size-4" />
@@ -174,8 +534,8 @@ export default function PreviewPanel({
             </button>
             <button
               type="button"
-              onClick={() => onCurrentFrameIndexChange(Math.min(totalFrames - 1, safeIndex + 1))}
-              disabled={safeIndex >= totalFrames - 1 || totalFrames === 0}
+              onClick={goNext}
+              disabled={totalFrames === 0}
               className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-semibold text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Próximo
@@ -190,6 +550,7 @@ export default function PreviewPanel({
               min={1}
               max={safeTotal}
               value={safeIndex + 1}
+              aria-label="Quadro atual"
               onChange={(event) => {
                 const v = Number.parseInt(event.target.value, 10)
                 if (!Number.isNaN(v) && v >= 1 && v <= safeTotal) {
@@ -201,7 +562,7 @@ export default function PreviewPanel({
             <span className="text-[11px] text-slate-500">de {safeTotal}</span>
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => onViewModeChange((v) => (v === 'loop' ? 'frame-by-frame' : 'loop'))}
@@ -214,6 +575,26 @@ export default function PreviewPanel({
               {viewMode === 'loop' ? <RefreshCw className="size-3.5" /> : <Square className="size-3.5" />}
               {viewMode === 'loop' ? 'Loop' : 'Frame a frame'}
             </button>
+
+            {viewMode === 'loop' && (
+              <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
+                <span className="uppercase">FPS</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={fps}
+                  onChange={(event) => {
+                    const value = Number.parseInt(event.target.value, 10)
+                    if (Number.isFinite(value)) {
+                      onFpsChange(Math.min(60, Math.max(1, value)))
+                    }
+                  }}
+                  aria-label="Quadros por segundo"
+                  className="w-14 rounded-lg border border-white/10 bg-black/30 px-2 py-1 font-mono text-[11px] text-slate-100 focus:border-cyan-400/60 focus:outline-none"
+                />
+              </label>
+            )}
           </div>
         </div>
 
@@ -228,6 +609,12 @@ export default function PreviewPanel({
             loading={referenceBusy}
             loadingLabel="Processando referência…"
             emptyLabel="Nenhuma referência de movimento."
+            viewMode={viewMode}
+            onViewModeChange={onViewModeChange}
+            fps={fps}
+            onFpsChange={onFpsChange}
+            onPrev={goPrev}
+            onNext={goNext}
           />
           <FrameView
             label="Novo frame"
@@ -238,6 +625,12 @@ export default function PreviewPanel({
             loading={generating || slicing}
             loadingLabel={slicing ? 'Aplicando grade…' : 'Gerando frame…'}
             emptyLabel="Gere um spritesheet para ver o resultado aqui."
+            viewMode={viewMode}
+            onViewModeChange={onViewModeChange}
+            fps={fps}
+            onFpsChange={onFpsChange}
+            onPrev={goPrev}
+            onNext={goNext}
           />
         </div>
 
@@ -261,9 +654,13 @@ export default function PreviewPanel({
             <strong className="text-cyan-300">
               {referenceTotal} frame{referenceTotal === 1 ? '' : 's'}
             </strong>{' '}
-            conforme a grade detectada na referência ({referenceGrid?.columns}×
-            {referenceGrid?.rows}). Os campos abaixo recortam a referência e o
-            resultado — mudar a grade não altera a quantidade gerada.
+            na grade{' '}
+            <strong className="text-cyan-300">
+              {referenceGrid?.columns}×{referenceGrid?.rows}
+            </strong>
+            . Ajuste Colunas/Linhas para corrigir a detecção automática — a mesma
+            grade define os frames pedidos à IA e recorta a referência e o
+            resultado.
           </div>
 
           <label className="flex cursor-pointer items-center justify-between gap-2">

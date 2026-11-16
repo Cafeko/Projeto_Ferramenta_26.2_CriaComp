@@ -134,8 +134,8 @@
   <h1>Laboratório da API <span class="badge">BYOK</span></h1>
   <p>
     Testa os endpoints <code>POST /api/models</code> e <code>POST /api/generate</code> do backend
-    no mesmo domínio. A chave fica apenas na memória desta aba: nunca é salva no navegador
-    nem no servidor.
+    no mesmo domínio. A chave nunca é salva no servidor; por padrão fica salva localmente neste
+    navegador (<code>localStorage</code>) se a opção estiver marcada.
   </p>
 </header>
 
@@ -152,7 +152,12 @@
         </select>
       </label>
       <label>Chave de API
-        <input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="cole a chave aqui (não é salva)" />
+        <input id="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="cole a chave aqui (salva localmente se marcado)" />
+            <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:12px;color:#9fb0c7;cursor:pointer;">
+              <input id="rememberKey" type="checkbox" checked style="width:auto;margin:0;" />
+              <span>Salvar chave neste navegador (localStorage)</span>
+              <button id="btnClearKey" type="button" style="margin-left:auto;padding:2px 8px;font-size:11px;width:auto;">Limpar chave</button>
+            </label>
       </label>
     </div>
     <div class="row" style="margin-top: 12px">
@@ -226,8 +231,11 @@
   const MAX_SIDE = 512;
   const MAX_TOTAL_B64 = 4000000;
 
+  const LAB_STORAGE_KEY = "spritetransfer:lab-api-config";
   const providerEl = $("provider");
   const apiKeyEl = $("apiKey");
+  const rememberKeyEl = $("rememberKey");
+  const btnClearKey = $("btnClearKey");
   const modelSelectEl = $("modelSelect");
   const modelManualEl = $("modelManual");
   const refsEl = $("refs");
@@ -247,6 +255,118 @@
 
   let refsData = [];
   let previousData = [];
+
+  function loadLabConfig() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(LAB_STORAGE_KEY) || "null");
+      if (!parsed || typeof parsed !== "object") {
+        return { provider: "gemini", rememberKey: true, keysByProvider: {}, modelsByProvider: {} };
+      }
+      return {
+        provider: typeof parsed.provider === "string" && parsed.provider ? parsed.provider : "gemini",
+        rememberKey: typeof parsed.rememberKey === "boolean" ? parsed.rememberKey : true,
+        keysByProvider: parsed.keysByProvider && typeof parsed.keysByProvider === "object" ? parsed.keysByProvider : {},
+        modelsByProvider: parsed.modelsByProvider && typeof parsed.modelsByProvider === "object" ? parsed.modelsByProvider : {},
+      };
+    } catch {
+      return { provider: "gemini", rememberKey: true, keysByProvider: {}, modelsByProvider: {} };
+    }
+  }
+
+  let labConfig = loadLabConfig();
+
+  function saveLabConfig() {
+    try {
+      const payload = labConfig.rememberKey
+        ? {
+            provider: providerEl.value,
+            rememberKey: true,
+            keysByProvider: labConfig.keysByProvider,
+            modelsByProvider: labConfig.modelsByProvider,
+          }
+        : {
+            provider: providerEl.value,
+            rememberKey: false,
+            keysByProvider: {},
+            modelsByProvider: {},
+          };
+      localStorage.setItem(LAB_STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      // localStorage indisponível no navegador atual
+    }
+  }
+
+  if ([...providerEl.options].some((o) => o.value === labConfig.provider)) {
+    providerEl.value = labConfig.provider;
+  }
+  rememberKeyEl.checked = labConfig.rememberKey;
+  if (labConfig.rememberKey) {
+    apiKeyEl.value = labConfig.keysByProvider[providerEl.value] || "";
+    modelManualEl.value = labConfig.modelsByProvider[providerEl.value] || "";
+  }
+
+  providerEl.addEventListener("change", () => {
+    const p = providerEl.value;
+    labConfig.provider = p;
+    modelSelectEl.innerHTML = '<option value="">— valide a chave para listar —</option>';
+    if (rememberKeyEl.checked) {
+      apiKeyEl.value = labConfig.keysByProvider[p] || "";
+      modelManualEl.value = labConfig.modelsByProvider[p] || "";
+    } else {
+      apiKeyEl.value = "";
+      modelManualEl.value = "";
+    }
+    saveLabConfig();
+  });
+
+  apiKeyEl.addEventListener("input", () => {
+    if (!rememberKeyEl.checked) return;
+    const p = providerEl.value;
+    const trimmed = apiKeyEl.value.trim();
+    if (trimmed) {
+      labConfig.keysByProvider[p] = trimmed;
+    } else {
+      delete labConfig.keysByProvider[p];
+    }
+    saveLabConfig();
+  });
+
+  rememberKeyEl.addEventListener("change", () => {
+    labConfig.rememberKey = rememberKeyEl.checked;
+    if (labConfig.rememberKey) {
+      const p = providerEl.value;
+      const trimmed = apiKeyEl.value.trim();
+      if (trimmed) labConfig.keysByProvider[p] = trimmed;
+      const chosen = modelId();
+      if (chosen) labConfig.modelsByProvider[p] = chosen;
+    } else {
+      labConfig.keysByProvider = {};
+      labConfig.modelsByProvider = {};
+    }
+    saveLabConfig();
+  });
+
+  btnClearKey.addEventListener("click", () => {
+    const p = providerEl.value;
+    apiKeyEl.value = "";
+    modelManualEl.value = "";
+    modelSelectEl.innerHTML = '<option value="">— nada carregado —</option>';
+    delete labConfig.keysByProvider[p];
+    delete labConfig.modelsByProvider[p];
+    saveLabConfig();
+    setStatus(modelsStatus, "Chave salva deste provedor foi removida.", "info");
+  });
+
+  function syncSavedModel() {
+    if (!rememberKeyEl.checked) return;
+    const chosen = modelId();
+    if (chosen) {
+      labConfig.modelsByProvider[providerEl.value] = chosen;
+      saveLabConfig();
+    }
+  }
+  modelSelectEl.addEventListener("change", syncSavedModel);
+  modelManualEl.addEventListener("input", syncSavedModel);
 
   function setStatus(el, message, kind = "info") {
     el.className = `status ${kind}`;
@@ -378,6 +498,20 @@
         option.title = model.description || "";
         modelSelectEl.appendChild(option);
       });
+      const savedModel = labConfig.modelsByProvider[provider] || "";
+      if (savedModel && [...modelSelectEl.options].some((opt) => opt.value === savedModel)) {
+        modelSelectEl.value = savedModel;
+        if (modelManualEl.value.trim() === savedModel) {
+          modelManualEl.value = "";
+        }
+      }
+      if (rememberKeyEl.checked) {
+        labConfig.provider = provider;
+        labConfig.keysByProvider[provider] = apiKey;
+        const chosen = modelId();
+        if (chosen) labConfig.modelsByProvider[provider] = chosen;
+        saveLabConfig();
+      }
       const count = (payload.models || []).length;
       modelsInfo.textContent = `${count} modelo(s) • fonte: ${payload.source}`;
       const warning = payload.warning ? `\n${payload.warning}` : "";

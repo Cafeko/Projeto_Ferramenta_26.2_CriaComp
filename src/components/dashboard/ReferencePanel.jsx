@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 
 import { formatElapsed } from '../../lib/api'
-import { Card, Field, PrimaryButton, inputClass } from './ui'
+import { Alert, Card, Field, PrimaryButton, inputClass } from './ui'
 
 /**
  * Coluna esquerda: referência de movimento, prompts e botão de geração.
@@ -39,6 +39,8 @@ import { Card, Field, PrimaryButton, inputClass } from './ui'
  *   elapsed: number,
  *   canGenerate: boolean,
  *   generateHint: string,
+ *   referenceError?: string,
+ *   onMultipleFiles?: () => void,
  * }} props
  */
 export default function ReferencePanel({
@@ -60,6 +62,8 @@ export default function ReferencePanel({
   elapsed,
   canGenerate,
   generateHint,
+  referenceError = '',
+  onMultipleFiles,
 }) {
   const inputRef = useRef(null)
   const styleInputRef = useRef(null)
@@ -72,24 +76,30 @@ export default function ReferencePanel({
     inputRef.current?.click()
   }
 
+  function pickDroppedFile(event) {
+    const files = event.dataTransfer?.files
+    if (files && files.length > 1) onMultipleFiles?.()
+    return files?.[0]
+  }
+
   function handleDrop(event) {
     event.preventDefault()
     setDragging(false)
-    const file = event.dataTransfer?.files?.[0]
+    const file = pickDroppedFile(event)
     if (file) onFileSelected(file)
   }
 
   function handleStyleDrop(event) {
     event.preventDefault()
     setStyleDragging(false)
-    const file = event.dataTransfer?.files?.[0]
+    const file = pickDroppedFile(event)
     if (file) onStyleFileSelected(file)
   }
 
   function handleAppearanceDrop(event) {
     event.preventDefault()
     setAppearanceDragging(false)
-    const file = event.dataTransfer?.files?.[0]
+    const file = pickDroppedFile(event)
     if (file) onAppearanceFileSelected(file)
   }
 
@@ -187,6 +197,11 @@ export default function ReferencePanel({
               </div>
             )}
           </div>
+          {referenceError && (
+            <Alert tone="error" className="mt-2">
+              {referenceError}
+            </Alert>
+          )}
         </div>
       </Card>
 

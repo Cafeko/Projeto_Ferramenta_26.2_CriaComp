@@ -28,6 +28,9 @@ import { Alert, Card, Field, Pill, inputClass, selectClass } from './ui'
  *   modelId: string,
  *   onModelChange: (value: string) => void,
  *   modelsWarning?: string | null,
+ *   rememberKey?: boolean,
+ *   onRememberKeyChange?: (value: boolean) => void,
+ *   onClearKey?: () => void,
  * }} props
  */
 export default function ApiConfigPanel({
@@ -42,6 +45,9 @@ export default function ApiConfigPanel({
   modelId,
   onModelChange,
   modelsWarning = null,
+  rememberKey = true,
+  onRememberKeyChange,
+  onClearKey,
 }) {
   const [showKey, setShowKey] = useState(false)
   const providerMeta = PROVIDERS.find((item) => item.id === provider) ?? PROVIDERS[0]
@@ -52,7 +58,11 @@ export default function ApiConfigPanel({
   return (
     <Card
       title="Configuração da API"
-      subtitle="BYOK · a chave fica só na memória da aba"
+      subtitle={
+        rememberKey
+          ? 'BYOK · chave salva neste navegador'
+          : 'BYOK · a chave fica só na memória da aba'
+      }
       icon={KeyRound}
       badge={
         status === 'valid' ? (
@@ -129,6 +139,26 @@ export default function ApiConfigPanel({
               {validating ? 'Validando' : 'Validar'}
             </button>
           </div>
+          <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+            <label className="inline-flex cursor-pointer items-center gap-1.5 text-slate-400 select-none">
+              <input
+                type="checkbox"
+                checked={rememberKey}
+                onChange={(event) => onRememberKeyChange?.(event.target.checked)}
+                className="size-3.5 accent-cyan-400"
+              />
+              Salvar chave neste navegador
+            </label>
+            {keyFilled && onClearKey && (
+              <button
+                type="button"
+                onClick={onClearKey}
+                className="rounded px-1.5 py-0.5 text-[10px] font-semibold text-slate-400 transition hover:bg-white/5 hover:text-rose-300"
+              >
+                Limpar chave
+              </button>
+            )}
+          </div>
         </Field>
 
         {status === 'valid' && (
@@ -139,6 +169,14 @@ export default function ApiConfigPanel({
           </div>
         )}
 
+        {status === 'valid' && models.length === 0 && (
+          <Alert tone="warning">
+            A chave foi aceita, mas o provedor não listou modelos de imagem.
+            Verifique se a conta tem acesso a modelos de imagem ou use outra
+            chave.
+          </Alert>
+        )}
+
         {status === 'error' && error && <Alert tone="error">{error}</Alert>}
 
         <Field
@@ -147,7 +185,9 @@ export default function ApiConfigPanel({
           htmlFor="model-select"
           hint={
             models.length === 0
-              ? 'Valide a chave para carregar os modelos de imagem disponíveis.'
+              ? status === 'valid'
+                ? 'Nenhum modelo de imagem foi listado para esta chave. Use outra chave ou confira o acesso da conta no provedor.'
+                : 'Valide a chave para carregar os modelos de imagem disponíveis.'
               : selectedModel?.supports_reference_images === false
                 ? 'Este modelo pode não aceitar imagens de referência.'
                 : undefined

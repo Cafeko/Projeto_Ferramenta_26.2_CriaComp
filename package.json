@@ -11,7 +11,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "dev:api": "uvicorn api.index:app --reload --port 8000",
+    "dev:api": "node -e \"const fs=require('fs'),cp=require('child_process');const p=['.venv/Scripts/python.exe','.venv/bin/python'].find(f=>fs.existsSync(f))||'python';const r=cp.spawnSync(p,['-m','uvicorn','api.index:app','--reload','--port','8000'],{stdio:'inherit'});process.exit(r.status??1)\"",
     "dev:all": "concurrently -n API,WEB -c magenta,cyan \"npm:dev:api\" \"npm:dev\"",
     "vercel:dev": "vercel dev --local"
   },

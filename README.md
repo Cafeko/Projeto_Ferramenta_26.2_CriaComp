@@ -46,13 +46,16 @@ Artistas & Designers: Para explorar variações visuais e rascunhar movimentaç�
 │   │   ├── MainDashboard.jsx      # Estado global + chamadas de API
 │   │   └── dashboard/             # Cards (BYOK, referência, preview, correção, exportação)
 │   ├── lib/api.js        # Cliente do backend e normalização de erros
+│   ├── lib/localStore.js # Persistência local (localStorage + IndexedDB)
 │   ├── utils/
 │   │   ├── imagePipeline.js       # Recorte, alinhamento, grade e GIF (Canvas)
+│   │   ├── qualityMetrics.js      # Nota de qualidade (pose, consistência, pixel art)
 │   │   └── presets.js             # Presets guardados (Walk/Run/Attack) para uso futuro
 │   ├── index.css         # Tailwind + tema base + xadrez de transparência
 │   └── main.jsx
 ├── tests/
-│   └── image-pipeline.html        # 22 testes do pipeline no navegador
+│   ├── image-pipeline.html        # 22 testes do pipeline no navegador
+│   └── quality-metrics.html       # 18 testes da métrica de qualidade
 ├── index.html
 ├── vite.config.js        # Proxy /api -> http://127.0.0.1:8000
 ├── vercel.json           # Services: /api/* -> FastAPI, resto -> Vite
@@ -149,6 +152,18 @@ Valida a chave e devolve os modelos de imagem/visão disponíveis. Quando o
 provedor não permite uma listagem simples (caso do Replicate), a resposta traz
 uma lista segura de modelos recomendados e `source: "fallback"`.
 
+No Replicate, o `aspect_ratio` é derivado da grade de saída: se o modelo declara
+a proporção exata, ela é usada; caso contrário, o backend prefere
+`match_input_image`/`auto` (para preservar a proporção da folha de referência) e
+nunca envia um valor fora da lista aceita pelo modelo — por exemplo, `21:9` em
+modelos que só chegam a `16:9`. Se mesmo assim o provedor recusar apenas a
+proporção, a requisição é repetida uma vez sem esse campo.
+
+O backend **nunca troca o modelo escolhido pelo usuário**. Se o modelo falhar
+(credencial interna, erro do modelo, limite etc.), o erro volta com a mensagem
+explicativa e o nome do modelo, e a decisão de gerar com outro modelo é do
+usuário.
+
 ```json
 {
   "provider": "gemini",
@@ -204,12 +219,14 @@ Resposta:
   paleta, contorno, sombreamento e nível de detalhe. O texto `art_style` também
   define o estilo. Se nem imagem nem texto de estilo forem enviados, a própria
   referência de movimento também passa a valer como estilo. `frame_count`
-  informa quantos frames a saída deve ter (o total detectado na referência,
-  ex.: 16) e `grid_columns`/`grid_rows` usam essa mesma grade (ex.: 4×4). A
-  referência é enviada inteira e a IA deve desenhar o mesmo número de frames, na
-  mesma ordem. O resultado é uma spritesheet; a divisão em frames acontece só no
-  frontend, com os mesmos campos Colunas/Linhas aplicados à referência e ao
-  resultado.
+  informa quantos frames a saída deve ter e `grid_columns`/`grid_rows` usam essa
+  mesma grade (ex.: 4×4). No frontend, esses dois valores vêm dos campos
+  **Colunas/Linhas** do painel central — a detecção automática só os
+  pré-preenche, de modo que o usuário pode corrigir uma detecção errada (ex.:
+  folha de 3 frames detectada como 5×1). A referência é enviada inteira e a IA
+  deve desenhar o mesmo número de frames, na mesma ordem. O resultado é uma
+  spritesheet; a divisão em frames acontece só no frontend, com os mesmos campos
+  Colunas/Linhas aplicados à referência e ao resultado.
 - **Correção** (`correction_prompt` presente): as `previous_generated_images`
   são a fonte de verdade visual.
   - **Frame individual:** envie somente aquele frame e `target_frame_index: 0`
@@ -242,21 +259,58 @@ Para exibir no frontend:
 
 ### Erros
 
-Todas as falhas previstas voltam com uma mensagem em português e um `code`:
+Todas as falhas previstas voltam com uma mensagem em português no mesmo
+formato: **o que aconteceu** e **o que fazer em seguida**. A mensagem não
+depende de um provedor específico; quando ajuda, cita o modelo ou o provedor.
 
 ```json
 {
-  "detail": "Chave de API inválida ou sem permissão no OpenAI. Confira a chave...",
+  "detail": "A chave de API foi recusada pelo provedor (inválida, expirada ou sem permissão). Confira a chave no painel do provedor, valide novamente e, se necessário, gere uma nova.",
   "code": "invalid_api_key",
   "provider": "openai",
   "provider_status": 401
 }
 ```
 
-Códigos comuns: `invalid_api_key`, `quota_exhausted`, `rate_limit`,
-`provider_timeout`, `no_image_returned`, `model_without_image_input`,
-`too_many_images`, `payload_too_large`, `invalid_image` e
-`target_frame_index_out_of_range`.
+| Categoria | Códigos | O que a mensagem indica |
+|---|---|---|
+| Chave/conta | `invalid_api_key`, `quota_exhausted`, `rate_limit` | chave recusada, sem saldo/cota ou requisições demais |
+| Imagens | `invalid_image`, `image_too_large`, `payload_too_large`, `missing_images`, `missing_previous_images`, `too_many_images`, `invalid_provider_image`, `empty_provider_image`, `provider_image_too_large`, `download_failed`, `download_timeout` | arquivo inválido/grande, limite de tamanho, quantidade de referências ou falha ao baixar a imagem gerada |
+| Requisição | `invalid_request`, `validation_error`, `invalid_target_frame`, `target_frame_index_out_of_range` | parâmetro inválido ou combinação incorreta |
+| Modelo | `model_not_found`, `invalid_model_id`, `invalid_model_schema`, `unsupported_model_input`, `model_without_image_input`, `provider_model_error`, `no_image_returned` | modelo inexistente, incompatível, que falhou ou terminou sem imagem |
+| Provedor | `provider_auth_failed`, `provider_unavailable`, `provider_timeout`, `generation_failed`, `generation_canceled`, `safety_blocked`, `connection_error`, `network_error`, `invalid_provider_response`, `provider_error` | falha interna, indisponibilidade, limite ou bloqueio do provedor |
+| Servidor | `internal_error`, `response_too_large` | erro inesperado do backend ou resposta grande demais |
+
+`provider_auth_failed` indica que o provedor não conseguiu autenticar o modelo
+num serviço upstream (credencial interna dele). **Não é a sua chave** nem os
+dados enviados: tente novamente em alguns minutos, escolha outro modelo ou outro
+provedor.
+
+`provider_model_error` indica que o modelo falhou internamente no provedor
+(ex.: `ModelError ... E002`). Também não é a sua chave; tente novamente ou troque
+de modelo.
+
+O backend **nunca troca o modelo escolhido**; o erro volta para o usuário
+decidir. Os detalhes técnicos do provedor (`details`) acompanham a resposta para
+diagnóstico, mas a mensagem principal é sempre acionável.
+
+### Avisos locais (sem `code` de API)
+
+Além dos erros do backend, a interface avisa quando a ação não pode continuar:
+
+- **Chave aceita, mas nenhum modelo de imagem listado** — confira o acesso da
+  conta no provedor ou use outra chave.
+- **Grade inválida ou pequena demais para a imagem** — o erro aparece no card da
+  referência, pedindo para ajustar Colunas/Linhas ou usar uma imagem maior.
+- **Falha ao recortar o resultado** — um aviso explica que a grade não pôde ser
+  aplicada e que a folha inteira está sendo exibida.
+- **Correção sem frames** — aviso para gerar/carregar frames antes de corrigir.
+- **Grade acima de 64 frames** — o botão de gerar fica bloqueado e o texto
+  explica o limite por chamada.
+- **Armazenamento local bloqueado/cheio** — aviso de que a chave, as
+  configurações ou as imagens não serão lembradas ao recarregar.
+- **Falha ao restaurar a sessão anterior** — aviso de que o armazenamento local
+  pode estar bloqueado, sem impedir o uso da sessão atual.
 
 ### Página de teste (laboratório)
 
@@ -283,10 +337,11 @@ duas colunas em tablets):
 - **BYOK:** provedor, chave (com botão `Validar`), lista dinâmica de modelos e
   link `Obter chave` para o console de cada provedor.
 - **Referência de movimento:** drag & drop de PNG/spritesheet. O app **detecta
-  a grade real da imagem** pelos pixels (transparência ou cor de fundo) e usa
-  esse total para definir quantos frames a IA deve gerar. A grade **Colunas/
-  Linhas** fica só no painel central e recorta **tanto a referência antiga
-  quanto o resultado novo**. Ex.: uma spritesheet 4×4 gera 16 frames.
+  uma grade provável** pelos pixels (transparência ou cor de fundo) apenas para
+  pré-preencher **Colunas/Linhas**; esses campos são a fonte da verdade e podem
+  ser ajustados quando a detecção errar. A mesma grade define quantos frames a
+  IA deve gerar e recorta **tanto a referência antiga quanto o resultado novo**.
+  Ex.: uma spritesheet 4×4 gera 16 frames.
 - **Presets rápidos:** removidos da interface; o gerador procedural continua
   guardado em `src/utils/presets.js` para uso futuro.
 - **Prompt:** aparência do personagem e estilo de arte. A aparência pode ser
@@ -301,8 +356,18 @@ duas colunas em tablets):
   enviando a referência inteira e o número real de frames para a IA.
 
 ### Coluna central — preview e filmstrip
-- Player lado a lado com a **animação original** e a **nova animação**, em loop
-  sincronizado, controle de **FPS** e **Play/Pause**.
+- Player lado a lado com a **animação original** e a **nova animação**.
+  No modo **Loop**, aparece o controle de **FPS (1–60)**; fora dele, o controle
+  some. **Anterior/Próximo** navegam em círculo: do último frame volta ao
+  primeiro e do primeiro vai ao último.
+- Cada quadro tem **zoom (100%–800%)**, **arraste** para reposicionar e
+  **tela cheia** (`Esc` fecha). A roda do mouse e os botões `−`/`+` controlam o
+  zoom; clicar na porcentagem, dar duplo clique ou pressionar `0` redefine.
+  O zoom/posição é mantido ao navegar entre frames e volta ao normal quando o
+  tamanho da imagem muda.
+- Na **tela cheia** também há **Anterior/Próximo**, alternância entre
+  **Loop** e **Frame a frame** e o controle de **FPS** quando em loop;
+  `←`/`→` trocam de frame e `Esc` fecha.
 - Filmstrip com os frames PNG numerados e o botão **`[ Editar Frame ]`** em cada
   um. A janela de edição se ajusta à tela (com rolagem) e a correção individual
   envia só aquele frame. A correção é guardada como **candidata**: a janela
@@ -316,7 +381,25 @@ duas colunas em tablets):
 - **Exportação:** `[ EXPORTAR SPRITESHEET PNG (GRID) ]` e
   `[ EXPORTAR GIF ANIMADO ]`, ambos processados localmente pela Canvas API.
 
-A chave nunca é persistida (nem em `localStorage`): fica só no estado do React.
+### Persistência local (por dispositivo)
+
+Nada de chave, configuração ou imagem é gravado no servidor. O que fica salvo é
+apenas no navegador em uso:
+
+- **`localStorage`** — chave de API por provedor e modelo preferido
+  (`spritetransfer:api-config`), configurações e textos da sessão
+  (`spritetransfer:workspace`) e histórico de métricas
+  (`spritetransfer:usage-history`).
+- **IndexedDB** (`spritetransfer-local`) — imagens de referência de pose, estilo
+  e aparência, além do último spritesheet gerado, guardadas como Blob.
+
+Ao abrir o site, a sessão anterior é restaurada automaticamente (configurações e
+imagens). O escopo é a origem + navegador + perfil: **não** aparece em outro
+dispositivo ou navegador, não é sincronizado e some ao limpar os dados do site.
+O botão **“Limpar imagens salvas neste dispositivo”** (card Privacidade) apaga só
+as imagens do IndexedDB; a tela atual continua até recarregar. Desmarcar “Salvar
+chave neste navegador” mantém a chave só na memória da aba.
+
 Os frames e as referências são normalizados para Data URLs antes de ir ao
 backend, e o cliente bloqueia o envio quando o Base64 passa do limite da Vercel.
 
@@ -368,6 +451,32 @@ await exportGIF(aligned, 8)
 Os testes de navegador ficam em `tests/image-pipeline.html`: com `npm run dev`,
 abra `http://localhost:5173/tests/image-pipeline.html` (22 verificações de
 recorte, alinhamento, compilação, GIF e erros).
+
+## 📊 Métricas: tempo, custo e qualidade
+
+O painel **Métricas** mostra, para cada chamada à IA, o tempo, o custo e a
+**qualidade** do resultado, além da média acumulada. A qualidade é calculada
+em `src/utils/qualityMetrics.js`, **no navegador e sem chamar a IA** (avaliar
+não pode gerar custo nem tempo extra). A nota vai de 0 a 100 e mede a
+promessa central da ferramenta: transferir a pose da referência para um
+personagem consistente, em pixel art utilizável.
+
+| Componente | Peso | Como é medido |
+| --- | --- | --- |
+| Fidelidade de pose | 45% | IoU suave entre a silhueta de cada frame gerado e a do frame de referência correspondente, numa grade 24×24 normalizada (tamanho e posição do sprite não importam) |
+| Consistência do personagem | 35% | Interseção do histograma de cores de cada frame com o histograma médio da animação |
+| Pixel art utilizável | 20% | Número de cores dominantes (que cobrem 95% do personagem) e tipo de fundo (transparente > sólido > cenário) |
+
+- Frames vazios ou faltando multiplicam a nota pela fração de frames válidos.
+- Sem referência fatiada (uma imagem para vários frames), a pose não é
+  avaliada e o peso dela é redistribuído entre os outros dois componentes.
+- O frame que destoa da média (10 pontos abaixo ou mais) aparece com um
+  atalho para a correção individual.
+- A nota é heurística: serve para comparar tentativas (modelos, prompts,
+  correções) entre si, não como verdade absoluta.
+
+Testes: com `npm run dev`, abra `http://localhost:5173/tests/quality-metrics.html`
+(18 verificações com sprites sintéticos).
 
 ## ☁️ Deploy na Vercel
 
