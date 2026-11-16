@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<title>Testes da métrica de qualidade</title>
+<style>
+  body { background:#0b0f17; color:#e8eefc; font-family:ui-monospace, Consolas, monospace; padding:24px; }
+  pre { white-space:pre-wrap; line-height:1.6; }
+  .ok { color:#34d399; }
+  .err { color:#f87171; }
+</style>
+</head>
+<body>
+<h1>Testes da métrica de qualidade</h1>
+<pre id="out"></pre>
+<script type="module">
+import { evaluateAnimationQuality, qualityGrade } from '/src/utils/qualityMetrics.js'
+
+const out = document.getElementById('out')
+const results = { passed: 0, failed: 0 }
+
+function log(message, kind = '') {
+  const line = document.createElement('div')
+  if (kind) line.className = kind
+  line.textContent = message
+  out.appendChild(line)
+}
+
+function check(name, condition, extra = '') {
+  results[condition ? 'passed' : 'failed'] += 1
+  log(`${condition ? 'PASS' : 'FAIL'} ${name}${extra ? ` — ${extra}` : ''}`, condition ? 'ok' : 'err')
+}
+
+// Bonequinho de pixel art: corpo, cabeça e um braço em posições diferentes.
+const POSES = [
+  [[-6, 0, 6, 2]], // braço esticado à esquerda
+  [[2, -6, 2, 6]], // braço para cima
+  [[2, 0, 6, 2]], // braço esticado à direita
+  [[2, 6, 2, 6]], // braço para baixo, longe do corpo
+]
+
+function drawFigure({
+  pose,
+  size = 32,
+  scale = 1,
+  offsetX = 0,
+  body = '#3b82f6',
+  skin = '#fcd34d',
+  background = null,
+  noise = false,
+}) {
+  const canvas = document.createElement('canvas')
+  canvas.width = size * scale
+  canvas.height = size * scale
+  const context = canvas.getContext('2d')
+  if (background) {
+    context.fillStyle = background
+    context.fillRect(0, 0, canvas.width, canvas.height)
+  }
+  const rect = (x, y, w, h, color) => {
+    context.fillStyle = color
+    context.fillRect((x + offsetX) * scale, y * scale, w * scale, h * scale)
+  }
+  if (pose !== null) {
+    rect(13, 4, 6, 6, skin) // cabeça
+    rect(12, 10, 8, 12, body) // tronco
+    rect(12, 22, 3, 8, '#1e293b') // perna
+    rect(17, 22, 3, 8, '#1e293b') // perna
+    for (const [x, y, w, h] of POSES[pose]) rect(x < 0 ? 12 + x : 18 + x, 12 + y, w, h, skin)
+  }
+  if (noise) {
+    const image = context.getImageData(0, 0, canvas.width, canvas.height)
+    for (let offset = 0; offset < image.data.length; offset += 4) {
+      if (image.data[offset + 3] === 0) continue
+      for (let channel = 0; channel < 3; channel += 1) {
+        image.data[offset + channel] = Math.min(255, Math.max(0, image.data[offset + channel] + Math.round((Math.random() - 0.5) * 120)))
+      }
+    }
+    context.putImageData(image, 0, 0)
+  }
+  return canvas.toDataURL('image/png')
+}
+
+const reference = [0, 1, 2, 3].map((pose) => drawFigure({ pose }))
+
+async function run() {
+  const identical = await evaluateAnimationQuality({ frames: reference, referenceFrames: reference })
+  check('cópia exata: pose 100', identical.pose === 100, `pose=${identical.pose}`)
+  check('cópia exata: consistência alta', identical.consistency >= 90, `consistência=${identical.consistency}`)
+  check('cópia exata: pixel art 100', identical.pixelArt === 100, `pixelArt=${identical.pixelArt}`)
+  check('cópia exata: nota ≥ 95', identical.score >= 95, `nota=${identical.score}`)
+  check('cópia exata: nenhum frame destoa', identical.worstFrameIndex === null)
+
+  const scaled = await evaluateAnimationQuality({
+    frames: [0, 1, 2, 3].map((pose) => drawFigure({ pose, scale: 4, offsetX: 3 })),
+    referenceFrames: reference,
+  })
+  check('escala/posição diferentes não afetam a pose', scaled.pose >= 90, `pose=${scaled.pose}`)
+
+  const shuffled = await evaluateAnimationQuality({
+    frames: [2, 3, 0, 1].map((pose) => drawFigure({ pose })),
+    referenceFrames: reference,
+  })
+  check('poses trocadas reduzem a fidelidade', shuffled.pose < identical.pose - 15, `pose=${shuffled.pose}`)
+
+  const recolored = await evaluateAnimationQuality({
+    frames: [0, 1, 2, 3].map((pose) =>
+      drawFigure({ pose, body: pose === 2 ? '#dc2626' : '#3b82f6', skin: pose === 2 ? '#7c3aed' : '#fcd34d' }),
+    ),
+    referenceFrames: reference,
+  })
+  check('personagem recolorido reduz a consistência', recolored.consistency < identical.consistency, `consistência=${recolored.consistency}`)
+  check('frame recolorido é apontado como o pior', recolored.worstFrameIndex === 2, `pior=${recolored.worstFrameIndex}`)
+
+  const withEmpty = await evaluateAnimationQuality({
+    frames: [drawFigure({ pose: 0 }), drawFigure({ pose: 1 }), drawFigure({ pose: null }), drawFigure({ pose: 3 })],
+    referenceFrames: reference,
+  })
+  check('frame vazio é contado', withEmpty.emptyFrames === 1)
+  check('frame vazio reduz a nota a ~75%', withEmpty.completeness === 75 && withEmpty.score <= 76, `nota=${withEmpty.score}`)
+
+  const noisy = await evaluateAnimationQuality({
+    frames: [0, 1, 2, 3].map((pose) => drawFigure({ pose, scale: 4, noise: true })),
+    referenceFrames: reference,
+  })
+  check('cores com ruído reduzem pixel art', noisy.pixelArt < 70, `pixelArt=${noisy.pixelArt}, cores=${noisy.colors}`)
+
+  const solid = await evaluateAnimationQuality({
+    frames: [0, 1, 2, 3].map((pose) => drawFigure({ pose, background: '#ffffff' })),
+    referenceFrames: reference,
+  })
+  check('fundo sólido é detectado', solid.backgroundKind === 'solid')
+  check('fundo sólido não atrapalha a pose', solid.pose >= 90, `pose=${solid.pose}`)
+
+  const noReference = await evaluateAnimationQuality({
+    frames: reference,
+    referenceFrames: [drawFigure({ pose: 0, size: 128 })],
+  })
+  check('referência única para N frames: sem pose', noReference.pose === null)
+  check('sem pose: nota usa os outros componentes', noReference.score >= 90, `nota=${noReference.score}`)
+
+  check('sem frames: null', (await evaluateAnimationQuality({ frames: [] })) === null)
+  check('faixas de nota', qualityGrade(85).label === 'Ótima' && qualityGrade(30).label === 'Fraca')
+}
+
+run()
+  .catch((error) => check('execução sem exceção', false, String(error?.stack ?? error)))
+  .finally(() => {
+    log(`\n${results.passed} passaram, ${results.failed} falharam`, results.failed ? 'err' : 'ok')
+    document.title = `RESULT ${results.passed}/${results.passed + results.failed}`
+  })
+</script>
+</body>
+</html>
