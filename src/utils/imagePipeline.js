@@ -645,7 +645,8 @@ export async function alignBoundingBox(base64Frame, options = {}) {
     const bounds = findAlphaBounds(imageData, threshold)
     if (!bounds) {
       throw new ImagePipelineError(
-        'O frame está totalmente transparente: não há sprite para alinhar.',
+        'O frame está totalmente transparente: não há sprite para alinhar. ' +
+          'Gere novamente ou use outro frame.',
         { code: 'EMPTY_FRAME' },
       )
     }

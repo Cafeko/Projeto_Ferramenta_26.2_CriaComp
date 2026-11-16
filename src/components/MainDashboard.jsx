@@ -123,24 +123,38 @@ function readImageFile(file) {
 
         // Fotos enormes são reduzidas para caber no limite da Vercel.
         const scale = MAX_REFERENCE_SIDE / largestSide
-        const canvas = document.createElement('canvas')
-        canvas.width = Math.max(1, Math.round(width * scale))
-        canvas.height = Math.max(1, Math.round(height * scale))
-        const context = canvas.getContext('2d')
-        if (!context) {
-          reject(new Error('Canvas 2D indisponível para redimensionar a imagem.'))
-          return
+        try {
+          const canvas = document.createElement('canvas')
+          canvas.width = Math.max(1, Math.round(width * scale))
+          canvas.height = Math.max(1, Math.round(height * scale))
+          const context = canvas.getContext('2d')
+          if (!context) {
+            reject(
+              new Error(
+                'O navegador não conseguiu preparar o canvas para redimensionar ' +
+                  'a imagem. Tente outro navegador ou reduza o arquivo antes.',
+              ),
+            )
+            return
+          }
+          context.imageSmoothingEnabled = false
+          context.drawImage(image, 0, 0, canvas.width, canvas.height)
+          resolve({
+            dataUrl: canvas.toDataURL('image/png'),
+            width: canvas.width,
+            height: canvas.height,
+            sourceWidth: width,
+            sourceHeight: height,
+            resized: true,
+          })
+        } catch {
+          reject(
+            new Error(
+              'Não foi possível redimensionar a imagem. Tente outro arquivo ou ' +
+                'reduza a resolução antes de enviar.',
+            ),
+          )
         }
-        context.imageSmoothingEnabled = false
-        context.drawImage(image, 0, 0, canvas.width, canvas.height)
-        resolve({
-          dataUrl: canvas.toDataURL('image/png'),
-          width: canvas.width,
-          height: canvas.height,
-          sourceWidth: width,
-          height: canvas.height,
-          resized: true,
-        })
       }
       image.src = originalUrl
     }
@@ -287,27 +301,6 @@ export default function MainDashboard() {
   )
   const validationSeqRef = useRef(0)
 
-  useEffect(() => {
-    try {
-      const payload = rememberKey
-        ? {
-            provider,
-            rememberKey: true,
-            keysByProvider: savedKeys,
-            modelsByProvider: savedModels,
-          }
-        : {
-            provider,
-            rememberKey: false,
-            keysByProvider: {},
-            modelsByProvider: {},
-          }
-      window.localStorage.setItem(API_CONFIG_STORAGE_KEY, JSON.stringify(payload))
-    } catch {
-      // Armazenamento indisponível (aba anônima, cota): segue só em memória.
-    }
-  }, [provider, rememberKey, savedKeys, savedModels])
-
   /* --------------------------- Referência ------------------------------- */
   const [reference, setReference] = useState(null)
   // Grade usada no app. Os campos Colunas/Linhas do painel central são a fonte
@@ -415,6 +408,8 @@ export default function MainDashboard() {
   // — que remonta a folha inteira com o mesmo tamanho de PNG — seja salva.
   const lastSavedSheetsRef = useRef(null)
   const restoreLocalRef = useRef(false)
+  // Evita repetir o aviso de recorte inválido ao ajustar a grade.
+  const sliceWarnedRef = useRef('')
 
   const pushToast = useCallback((message, tone = 'info') => {
     const id = toastId.current + 1
@@ -446,6 +441,38 @@ export default function MainDashboard() {
     [pushToast],
   )
 
+  // Persiste a configuração de API (provedor, chave e modelo) no navegador.
+  // Se o localStorage estiver bloqueado, avisa uma vez em vez de falhar calado.
+  const storageWarned = useRef(false)
+  useEffect(() => {
+    try {
+      const payload = rememberKey
+        ? {
+            provider,
+            rememberKey: true,
+            keysByProvider: savedKeys,
+            modelsByProvider: savedModels,
+          }
+        : {
+            provider,
+            rememberKey: false,
+            keysByProvider: {},
+            modelsByProvider: {},
+          }
+      window.localStorage.setItem(API_CONFIG_STORAGE_KEY, JSON.stringify(payload))
+    } catch {
+      if (!storageWarned.current) {
+        storageWarned.current = true
+        pushToast(
+          'O navegador bloqueou o armazenamento local. A chave e as ' +
+            'configurações não serão lembradas ao recarregar; elas continuam ' +
+            'funcionando apenas nesta aba.',
+          'warning',
+        )
+      }
+    }
+  }, [provider, rememberKey, savedKeys, savedModels, pushToast])
+
   /** Chama a API e registra as métricas da resposta no histórico. */
   const generateAndTrack = useCallback(
     async (input) => {
@@ -476,7 +503,7 @@ export default function MainDashboard() {
   // Configurações e textos: pequenos, vão para o localStorage a cada mudança.
   // Não inclui chave de API (tem fluxo próprio em api-config).
   useEffect(() => {
-    saveWorkspaceSettings({
+    const saved = saveWorkspaceSettings({
       columns,
       rows,
       autoSlice,
@@ -486,6 +513,7 @@ export default function MainDashboard() {
       appearance,
       artStyle,
     })
+    if (!saved) warnLocalSaveFailure('salvar as configurações da sessão')
   }, [
     columns,
     rows,
@@ -495,6 +523,7 @@ export default function MainDashboard() {
     exportColumns,
     appearance,
     artStyle,
+    warnLocalSaveFailure,
   ])
 
   // Último resultado gerado: salvo no IndexedDB quando muda. Não é apagado ao
@@ -564,6 +593,12 @@ export default function MainDashboard() {
         }
       } catch (error) {
         console.warn('[restore-local]', error)
+        pushToast(
+          'Não foi possível restaurar a sessão anterior deste dispositivo. O ' +
+            'armazenamento local pode estar bloqueado ou os dados podem ter ' +
+            'sido apagados; a sessão atual continua normalmente.',
+          'warning',
+        )
       }
     })()
   }, [pushToast])
@@ -739,6 +774,16 @@ export default function MainDashboard() {
         if (cancelled) return
         console.error('[slice-result]', error)
         setFrames(generatedSheets)
+        const key = `${generatedSheets[0].length}:${gridColumns}x${gridRows}`
+        if (sliceWarnedRef.current !== key) {
+          sliceWarnedRef.current = key
+          pushToast(
+            `Não foi possível recortar o resultado na grade ` +
+              `${gridColumns}×${gridRows}. ${describeApiError(error)} ` +
+              'Ajuste Colunas/Linhas para ver os frames.',
+            'warning',
+          )
+        }
       } finally {
         if (!cancelled) setSlicingResult(false)
       }
@@ -747,7 +792,7 @@ export default function MainDashboard() {
     return () => {
       cancelled = true
     }
-  }, [generatedSheets, autoSlice, columns, rows])
+  }, [generatedSheets, autoSlice, columns, rows, pushToast])
 
   /* --------------------------- Playback --------------------------------- */
   useEffect(() => {
@@ -858,10 +903,18 @@ export default function MainDashboard() {
         }
 
         if (!silent) {
-          pushToast(
-            `Chave validada: ${result.models.length} modelo${result.models.length === 1 ? '' : 's'} disponíve${result.models.length === 1 ? 'l' : 'is'}.`,
-            'success',
-          )
+          if (result.models.length === 0) {
+            pushToast(
+              'A chave foi aceita, mas o provedor não listou modelos de ' +
+                'imagem. Verifique o acesso da conta ou use outra chave.',
+              'warning',
+            )
+          } else {
+            pushToast(
+              `Chave validada: ${result.models.length} modelo${result.models.length === 1 ? '' : 's'} disponíve${result.models.length === 1 ? 'l' : 'is'}.`,
+              'success',
+            )
+          }
         }
       } catch (error) {
         if (validationSeqRef.current !== seq) return
@@ -1083,8 +1136,10 @@ export default function MainDashboard() {
     setRows('1')
     setAutoSlice(false)
     setReferenceError('')
-    void deleteLocalImages(LOCAL_IMAGE_KEYS.pose)
-  }, [])
+    void deleteLocalImages(LOCAL_IMAGE_KEYS.pose).then((ok) => {
+      if (!ok) warnLocalSaveFailure('apagar a referência salva')
+    })
+  }, [warnLocalSaveFailure])
 
   const handleStyleFileSelected = useCallback(
     async (file) => {
@@ -1118,8 +1173,10 @@ export default function MainDashboard() {
 
   const handleClearStyleReference = useCallback(() => {
     setStyleReference(null)
-    void deleteLocalImages(LOCAL_IMAGE_KEYS.style)
-  }, [])
+    void deleteLocalImages(LOCAL_IMAGE_KEYS.style).then((ok) => {
+      if (!ok) warnLocalSaveFailure('apagar a referência de estilo salva')
+    })
+  }, [warnLocalSaveFailure])
 
   const handleAppearanceFileSelected = useCallback(
     async (file) => {
@@ -1153,14 +1210,17 @@ export default function MainDashboard() {
 
   const handleClearAppearanceReference = useCallback(() => {
     setAppearanceReference(null)
-    void deleteLocalImages(LOCAL_IMAGE_KEYS.appearance)
-  }, [])
+    void deleteLocalImages(LOCAL_IMAGE_KEYS.appearance).then((ok) => {
+      if (!ok) warnLocalSaveFailure('apagar a referência de aparência salva')
+    })
+  }, [warnLocalSaveFailure])
 
   const canGenerate = Boolean(
     apiKey.trim() &&
       modelId &&
       referenceFrames.length > 0 &&
       (appearance.trim() || appearanceReference) &&
+      effectiveGrid.total <= 64 &&
       !generating,
   )
 
@@ -1170,6 +1230,9 @@ export default function MainDashboard() {
     if (referenceFrames.length === 0) return 'Envie uma referência de movimento.'
     if (!appearance.trim() && !appearanceReference) {
       return 'Descreva a aparência do personagem ou envie uma imagem de referência.'
+    }
+    if (effectiveGrid.total > 64) {
+      return `A grade atual gera ${effectiveGrid.total} frames, mas o limite é 64 por chamada. Reduza Colunas/Linhas.`
     }
     const hasStyle = Boolean(artStyle.trim() || styleReference)
     return hasStyle
@@ -1380,7 +1443,15 @@ export default function MainDashboard() {
   )
 
   const handleApplyCorrection = useCallback(async () => {
-    if (correcting || frames.length === 0) return
+    if (correcting) return
+    if (frames.length === 0) {
+      pushToast(
+        'Nenhum frame disponível para corrigir. Gere ou carregue frames antes ' +
+          'de aplicar a correção.',
+        'warning',
+      )
+      return
+    }
     if (!correctionPrompt.trim()) {
       pushToast(
         'A instrução de correção está vazia. Descreva o que deve ser corrigido ' +
@@ -1541,13 +1612,15 @@ export default function MainDashboard() {
 
   /* --------------------------- Modal: correção individual -------------------------- */
   const handleModalApplySingle = useCallback(async () => {
-    if (
-      modalApplyingSingle ||
-      modalApplyingAll ||
-      modalFrameIndex === null ||
-      frames.length === 0
-    )
+    if (modalApplyingSingle || modalApplyingAll) return
+    if (modalFrameIndex === null || frames.length === 0) {
+      pushToast(
+        'Nenhum frame disponível para corrigir. Gere ou carregue frames antes ' +
+          'de continuar.',
+        'warning',
+      )
       return
+    }
     if (!modalPrompt.trim()) {
       pushToast(
         'A instrução de correção está vazia. Descreva o que deve ser corrigido ' +
@@ -1566,6 +1639,14 @@ export default function MainDashboard() {
     }
 
     const index = modalFrameIndex
+    if (index < 0 || index >= frames.length) {
+      pushToast(
+        'O frame selecionado não existe mais. Feche esta janela e escolha um ' +
+          'frame válido.',
+        'warning',
+      )
+      return
+    }
     // Envia APENAS o frame selecionado. O índice do alvo é 0 porque só há uma
     // imagem em `previous_generated_images` (o frame local pode ser, p.ex., 7).
     const previousImages = [frames[index]]
@@ -1656,8 +1737,22 @@ export default function MainDashboard() {
 
   /* --------------------- Modal: escolha do frame final --------------------- */
   const handleModalUseCandidate = useCallback(async () => {
-    if (!modalCandidateFrame || modalFrameIndex === null) return
+    if (!modalCandidateFrame || modalFrameIndex === null) {
+      pushToast(
+        'Nenhuma correção candidata para aplicar. Gere a correção novamente.',
+        'warning',
+      )
+      return
+    }
     const index = modalFrameIndex
+    if (index < 0 || index >= frames.length) {
+      pushToast(
+        'O frame selecionado não existe mais. Feche esta janela e escolha um ' +
+          'frame válido.',
+        'warning',
+      )
+      return
+    }
     const nextFrames = frames.map((frame, position) =>
       position === index ? modalCandidateFrame : frame,
     )
@@ -1684,12 +1779,15 @@ export default function MainDashboard() {
 
   /* --------------------------- Modal: correção em lote -------------------------- */
   const handleModalApplyAll = useCallback(async () => {
-    if (
-      modalApplyingAll ||
-      modalApplyingSingle ||
-      frames.length === 0
-    )
+    if (modalApplyingAll || modalApplyingSingle) return
+    if (frames.length === 0) {
+      pushToast(
+        'Nenhum frame disponível para corrigir. Gere ou carregue frames antes ' +
+          'de continuar.',
+        'warning',
+      )
       return
+    }
     if (!modalPrompt.trim()) {
       pushToast(
         'A instrução de correção está vazia. Descreva o que deve ser corrigido ' +
@@ -1904,6 +2002,13 @@ export default function MainDashboard() {
             elapsed={elapsed}
             canGenerate={canGenerate}
             generateHint={generateHint}
+            referenceError={referenceError}
+            onMultipleFiles={() =>
+              pushToast(
+                'Envie apenas uma imagem por vez em cada campo. Usei a primeira.',
+                'info',
+              )
+            }
           />
         </section>
 

@@ -169,6 +169,14 @@ export default function ApiConfigPanel({
           </div>
         )}
 
+        {status === 'valid' && models.length === 0 && (
+          <Alert tone="warning">
+            A chave foi aceita, mas o provedor não listou modelos de imagem.
+            Verifique se a conta tem acesso a modelos de imagem ou use outra
+            chave.
+          </Alert>
+        )}
+
         {status === 'error' && error && <Alert tone="error">{error}</Alert>}
 
         <Field
@@ -177,7 +185,9 @@ export default function ApiConfigPanel({
           htmlFor="model-select"
           hint={
             models.length === 0
-              ? 'Valide a chave para carregar os modelos de imagem disponíveis.'
+              ? status === 'valid'
+                ? 'Nenhum modelo de imagem foi listado para esta chave. Use outra chave ou confira o acesso da conta no provedor.'
+                : 'Valide a chave para carregar os modelos de imagem disponíveis.'
               : selectedModel?.supports_reference_images === false
                 ? 'Este modelo pode não aceitar imagens de referência.'
                 : undefined

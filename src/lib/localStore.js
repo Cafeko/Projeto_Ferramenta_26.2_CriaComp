@@ -51,7 +51,9 @@ export function loadWorkspaceSettings() {
       columns: typeof data.columns === 'string' ? data.columns : '1',
       rows: typeof data.rows === 'string' ? data.rows : '1',
       autoSlice: typeof data.autoSlice === 'boolean' ? data.autoSlice : false,
-      fps: Number.isFinite(data.fps) ? data.fps : 8,
+      fps: Number.isFinite(data.fps)
+        ? Math.min(60, Math.max(1, Math.round(data.fps)))
+        : 8,
       viewMode: data.viewMode === 'frame-by-frame' ? 'frame-by-frame' : 'loop',
       exportColumns:
         typeof data.exportColumns === 'string' ? data.exportColumns : '4',
@@ -70,8 +72,10 @@ export function saveWorkspaceSettings(settings) {
       WORKSPACE_KEY,
       JSON.stringify({ version: WORKSPACE_VERSION, data: settings }),
     )
+    return true
   } catch {
     // Armazenamento indisponível: segue apenas em memória.
+    return false
   }
 }
 
@@ -198,7 +202,7 @@ export async function getLocalImages(key) {
     }
   } catch (error) {
     console.warn('[local-store]', error)
-    return []
+    throw error
   }
 }
 

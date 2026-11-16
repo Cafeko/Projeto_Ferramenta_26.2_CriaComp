@@ -35,6 +35,24 @@ from pydantic import BaseModel, Field, field_validator
 
 logger = logging.getLogger("spritetransfer.api")
 
+
+def _env_float(name: str, default: str) -> float:
+    """Lê um float do ambiente sem derrubar a função se o valor for inválido."""
+    try:
+        return float(os.getenv(name, default))
+    except (TypeError, ValueError):
+        logger.warning("Valor inválido para %s; usando %s.", name, default)
+        return float(default)
+
+
+def _env_int(name: str, default: str) -> int:
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        logger.warning("Valor inválido para %s; usando %s.", name, default)
+        return int(default)
+
+
 PROVIDER_LABELS: dict[str, str] = {
     "gemini": "Google Gemini",
     "openai": "OpenAI",
@@ -46,13 +64,13 @@ PROVIDER_NAMES = tuple(PROVIDER_LABELS)
 
 # Timeouts de rede. A geração de imagem pode demorar bastante; o limite de
 # execução da função na Vercel é configurado no vercel.json (maxDuration).
-_CONNECT_TIMEOUT = float(os.getenv("PROVIDER_CONNECT_TIMEOUT_SECONDS", "15"))
-_READ_TIMEOUT = float(os.getenv("PROVIDER_READ_TIMEOUT_SECONDS", "180"))
+_CONNECT_TIMEOUT = _env_float("PROVIDER_CONNECT_TIMEOUT_SECONDS", "15")
+_READ_TIMEOUT = _env_float("PROVIDER_READ_TIMEOUT_SECONDS", "180")
 _REQUEST_TIMEOUT = (_CONNECT_TIMEOUT, _READ_TIMEOUT)
 _DOWNLOAD_TIMEOUT = (10.0, 60.0)
 
-MAX_INPUT_IMAGE_BYTES = int(os.getenv("MAX_INPUT_IMAGE_BYTES", str(8 * 1024 * 1024)))
-MAX_OUTPUT_IMAGE_BYTES = int(os.getenv("MAX_OUTPUT_IMAGE_BYTES", str(20 * 1024 * 1024)))
+MAX_INPUT_IMAGE_BYTES = _env_int("MAX_INPUT_IMAGE_BYTES", str(8 * 1024 * 1024))
+MAX_OUTPUT_IMAGE_BYTES = _env_int("MAX_OUTPUT_IMAGE_BYTES", str(20 * 1024 * 1024))
 MAX_REFERENCE_IMAGES = 24
 MAX_PREVIOUS_IMAGES = 12
 
@@ -73,6 +91,17 @@ MIME_EXTENSIONS = {
     "image/gif": "gif",
     "image/bmp": "bmp",
     "image/svg+xml": "svg",
+}
+
+# Formatos que não têm assinatura binária detectável por _sniff_mime; nesses
+# casos confiamos no MIME declarado. Qualquer outro MIME declarado (ex.:
+# image/png com conteúdo HTML) é recusado.
+_EXTRA_IMAGE_MIMES = {
+    "image/svg+xml",
+    "image/avif",
+    "image/heic",
+    "image/heif",
+    "image/tiff",
 }
 
 # ---------------------------------------------------------------------------
@@ -316,9 +345,19 @@ def _make_image(raw: bytes, mime_type: str | None) -> ImagePayload:
             "Gere em resolução menor.",
             code="provider_image_too_large",
         )
-    mime = _sniff_mime(raw) or (mime_type or "image/png").split(";")[0].strip()
-    if not mime.startswith("image/"):
-        mime = "image/png"
+    mime = _sniff_mime(raw)
+    if not mime:
+        declared = (mime_type or "").split(";")[0].strip().lower()
+        if declared in _EXTRA_IMAGE_MIMES:
+            mime = declared
+        else:
+            raise ApiError(
+                502,
+                "O provedor devolveu um arquivo que não é uma imagem "
+                "reconhecida. Tente novamente; se persistir, escolha outro "
+                "modelo.",
+                code="invalid_provider_image",
+            )
     b64 = _canonical_b64(raw)
     return ImagePayload(
         b64=b64, mime_type=mime, data_url=f"data:{mime};base64,{b64}"
@@ -387,10 +426,16 @@ def _normalize_input_image(value: str, field: str, index: int) -> ImagePayload:
         )
 
     mime = _sniff_mime(raw)
-    if not mime and declared_mime and declared_mime.startswith("image/"):
-        mime = declared_mime
     if not mime:
-        mime = "image/png"
+        if declared_mime in _EXTRA_IMAGE_MIMES:
+            mime = declared_mime
+        else:
+            raise ApiError(
+                400,
+                f"A imagem {index + 1} ({field}) não é um formato reconhecido. "
+                "Reenvie como PNG, JPEG, WebP ou GIF.",
+                code="invalid_image",
+            )
     return _make_image(raw, mime)
 
 
@@ -1251,6 +1296,13 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
     # O frontend informa quantas células a grade da referência tem. Sem esse
     # campo (clientes antigos), assume 1 frame por imagem enviada.
     requested_frames = request.frame_count or len(pose_images) or 1
+    grid_columns = request.grid_columns or requested_frames
+    grid_rows = request.grid_rows or 1
+    if grid_columns * grid_rows != requested_frames:
+        # Grade inconsistente com a contagem: usa uma linha única, igual ao
+        # que o corpo do prompt instrui o modelo a desenhar.
+        grid_columns = requested_frames
+        grid_rows = 1
     body = _generation_body(request, requested_frames)
     return PromptPlan(
         mode="generation",
@@ -1259,8 +1311,8 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
         visuals=tuple(visuals),
         target_frame_index=None,
         frame_count_override=requested_frames,
-        grid_columns=request.grid_columns or requested_frames,
-        grid_rows=request.grid_rows or 1,
+        grid_columns=grid_columns,
+        grid_rows=grid_rows,
     )
 
 
@@ -1753,7 +1805,9 @@ class GeminiAdapter(ProviderAdapter):
                 timeout=_REQUEST_TIMEOUT,
             )
             models: list[ModelOption] = []
-            for item in payload.get("models") or []:
+            for item in (
+                (payload.get("models") if isinstance(payload, dict) else None) or []
+            ):
                 if not isinstance(item, dict):
                     continue
                 model_id = str(item.get("name") or "").split("/")[-1]
@@ -1836,6 +1890,17 @@ class GeminiAdapter(ProviderAdapter):
                 },
             },
         )
+
+        if isinstance(payload, dict) and payload.get("error"):
+            detail = _truncate(str(payload["error"]), 300)
+            raise ApiError(
+                502,
+                "O provedor recusou a geração. Confira o modelo e o prompt; se "
+                f"persistir, escolha outro modelo. Detalhe do provedor: {detail}",
+                code="provider_error",
+                provider=self.provider,
+                details=detail,
+            )
 
         images = _gemini_collect_images(payload)
         if not images:
@@ -1960,7 +2025,7 @@ class OpenAIAdapter(ProviderAdapter):
         )
         items = [
             item
-            for item in (payload.get("data") or [])
+            for item in ((payload.get("data") if isinstance(payload, dict) else None) or [])
             if isinstance(item, dict) and item.get("id")
         ]
         items.sort(key=lambda item: item.get("created") or 0, reverse=True)
@@ -2064,6 +2129,16 @@ class OpenAIAdapter(ProviderAdapter):
                 "Tente novamente; se persistir, escolha outro modelo.",
                 code="invalid_provider_response",
                 provider=self.provider,
+            )
+        if payload.get("error"):
+            detail = _truncate(str(payload["error"]), 300)
+            raise ApiError(
+                502,
+                "O provedor recusou a geração. Confira o modelo e o prompt; se "
+                f"persistir, escolha outro modelo. Detalhe do provedor: {detail}",
+                code="provider_error",
+                provider=self.provider,
+                details=detail,
             )
         images = _openai_collect_images(payload, api_key)
         if not images:
@@ -2706,7 +2781,7 @@ def _replicate_wait(
     budget = (
         float(timeout_seconds)
         if timeout_seconds is not None
-        else float(os.getenv("REPLICATE_TIMEOUT_SECONDS", "200"))
+        else _env_float("REPLICATE_TIMEOUT_SECONDS", "200")
     )
     deadline = time.monotonic() + max(5.0, budget)
     model_label = model_id or str(prediction.get("model") or "o modelo escolhido")

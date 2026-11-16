@@ -294,6 +294,24 @@ O backend **nunca troca o modelo escolhido**; o erro volta para o usuário
 decidir. Os detalhes técnicos do provedor (`details`) acompanham a resposta para
 diagnóstico, mas a mensagem principal é sempre acionável.
 
+### Avisos locais (sem `code` de API)
+
+Além dos erros do backend, a interface avisa quando a ação não pode continuar:
+
+- **Chave aceita, mas nenhum modelo de imagem listado** — confira o acesso da
+  conta no provedor ou use outra chave.
+- **Grade inválida ou pequena demais para a imagem** — o erro aparece no card da
+  referência, pedindo para ajustar Colunas/Linhas ou usar uma imagem maior.
+- **Falha ao recortar o resultado** — um aviso explica que a grade não pôde ser
+  aplicada e que a folha inteira está sendo exibida.
+- **Correção sem frames** — aviso para gerar/carregar frames antes de corrigir.
+- **Grade acima de 64 frames** — o botão de gerar fica bloqueado e o texto
+  explica o limite por chamada.
+- **Armazenamento local bloqueado/cheio** — aviso de que a chave, as
+  configurações ou as imagens não serão lembradas ao recarregar.
+- **Falha ao restaurar a sessão anterior** — aviso de que o armazenamento local
+  pode estar bloqueado, sem impedir o uso da sessão atual.
+
 ### Página de teste (laboratório)
 
 A interface principal já consome a API. O `/laboratorio-api.html` continua
