@@ -397,18 +397,9 @@ export default function MainDashboard() {
         usage: result.usage,
       }
       setUsageHistory((current) => [...current, entry].slice(-MAX_USAGE_HISTORY))
-      // O backend pode ter trocado de modelo (ex.: modelo Google indisponível
-      // no Replicate). Avisa uma vez por chamada.
-      if (result.fallbackFrom) {
-        pushToast(
-          result.warning ||
-            `O modelo ${result.fallbackFrom} não pôde rodar; foi usado ${result.modelId}.`,
-          'warning',
-        )
-      }
       return result
     },
-    [pushToast],
+    [],
   )
 
   const handleResetUsage = useCallback(() => setUsageHistory([]), [])

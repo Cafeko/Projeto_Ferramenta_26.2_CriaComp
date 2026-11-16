@@ -213,11 +213,6 @@ class GenerateResponse(BaseModel):
     target_frame_index: int | None = None
     images: list[str]
     mime_types: list[str]
-    # Modelo realmente usado quando o pedido original precisou de um substituto
-    # (ex.: modelo Google indisponível no Replicate). O `model_id` acima já
-    # reflete o modelo efetivo.
-    fallback_from: str | None = None
-    warning: str | None = None
     # Métricas de avaliação: tempo, tokens e custo (real ou estimado).
     usage: "UsageInfo | None" = None
 
@@ -1373,8 +1368,6 @@ class ProviderUsage:
 class AdapterResult:
     images: list[ImagePayload]
     usage: ProviderUsage
-    # Preenchido quando o adaptador precisou usar outro modelo (fallback).
-    model_id: str | None = None
 
 
 class UsageInfo(BaseModel):
@@ -2834,38 +2827,6 @@ def _replicate_collect_images(
     return images
 
 
-# Modelos usados quando o modelo pedido falha por credencial do Google dentro do
-# Replicate (erro conhecido da família google/nano-banana*). Precisam aceitar
-# várias imagens de referência para manter o fluxo pose + estilo + aparência.
-_REPLICATE_FALLBACK_MODELS = (
-    "openai/gpt-image-2",
-    "black-forest-labs/flux-2-pro",
-    "bytedance/seedream-4",
-)
-
-
-def _replicate_fallback_models(model_id: str) -> list[str]:
-    """Modelos alternativos para o Replicate, sem repetir o modelo pedido."""
-    configured = os.getenv("REPLICATE_FALLBACK_MODELS", "").strip()
-    if configured:
-        candidates = [
-            item.strip() for item in configured.split(",") if item.strip()
-        ]
-    else:
-        candidates = list(_REPLICATE_FALLBACK_MODELS)
-
-    current = model_id.strip().lower()
-    seen = {current}
-    result: list[str] = []
-    for candidate in candidates:
-        key = candidate.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        result.append(candidate)
-    return result
-
-
 class ReplicateAdapter(ProviderAdapter):
     provider = "replicate"
 
@@ -2887,83 +2848,12 @@ class ReplicateAdapter(ProviderAdapter):
             ),
         )
 
-    # Falhas do provedor que outro modelo pode não ter. Erros de payload
-    # (invalid_request), segurança e rate limit não entram: repetir com outro
-    # modelo não resolveria e poderia esconder o problema.
-    _RECOVERABLE_FAILURES = {
-        "provider_auth_failed",
-        "provider_model_error",
-        "generation_failed",
-        "provider_timeout",
-        "no_image_returned",
-        "invalid_provider_response",
-    }
-
     def generate(
         self, api_key: str, model_id: str, plan: PromptPlan
     ) -> AdapterResult:
-        # Orçamento total da cadeia: evita estourar o maxDuration da função
-        # quando mais de um modelo é tentado.
-        total_budget = float(
-            os.getenv("REPLICATE_TOTAL_TIMEOUT_SECONDS", "260")
-        )
-        deadline = time.monotonic() + max(30.0, total_budget)
-
-        def remaining() -> float:
-            return deadline - time.monotonic()
-
-        def attempt(candidate: str) -> AdapterResult:
-            window = max(30.0, min(200.0, remaining()))
-            return self._generate_with_model(
-                api_key, candidate, plan, timeout_seconds=window
-            )
-
-        first_error: ApiError | None = None
-        try:
-            return attempt(model_id)
-        except ApiError as exc:
-            if not self._should_try_fallback(exc, model_id):
-                raise
-            first_error = exc
-
-        # Tenta os substitutos em ordem. Se um deles falhar por erro do provedor,
-        # segue para o próximo em vez de abortar a cadeia.
-        for candidate in _replicate_fallback_models(model_id):
-            if remaining() < 30:
-                break
-            try:
-                result = attempt(candidate)
-            except ApiError as fallback_error:
-                if self._is_recoverable_failure(fallback_error):
-                    continue
-                raise
-            return AdapterResult(
-                result.images, result.usage, model_id=candidate
-            )
-
-        if first_error is not None:
-            raise first_error
-        raise ApiError(
-            502,
-            "O Replicate não conseguiu gerar a imagem com nenhum modelo "
-            "disponível. Tente novamente em instantes.",
-            code="generation_failed",
-            provider="replicate",
-        )
-
-    def _should_try_fallback(self, exc: ApiError, model_id: str) -> bool:
-        # Família Google quebrada no Replicate: qualquer falha recuperável vale
-        # uma tentativa em outro modelo. Para modelos não-Google, só erro
-        # interno do modelo justifica trocar (ex.: E002).
-        if model_id.lower().startswith("google/"):
-            return self._is_recoverable_failure(exc)
-        return exc.code == "provider_model_error"
-
-    def _is_recoverable_failure(self, exc: ApiError) -> bool:
-        if exc.code in self._RECOVERABLE_FAILURES:
-            return True
-        text = f"{exc.details or ''} {exc.message or ''}".lower()
-        return "e002" in text or "modelerror" in text
+        # Nenhuma troca automática de modelo: se o modelo escolhido falhar, o
+        # erro volta para o usuário decidir o que fazer.
+        return self._generate_with_model(api_key, model_id, plan)
 
     def _generate_with_model(
         self,
@@ -3188,15 +3078,6 @@ def generate(payload: GenerateRequest) -> GenerateResponse:
     result = adapter.generate(payload.api_key, payload.model_id, plan)
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     images = result.images
-    # O adaptador pode ter trocado de modelo (ex.: fallback no Replicate).
-    effective_model_id = result.model_id or payload.model_id
-    fallback_from = payload.model_id if result.model_id else None
-    warning = (
-        f"O modelo {payload.model_id} não pôde rodar neste provedor; "
-        f"a imagem foi gerada com {effective_model_id}."
-        if fallback_from
-        else None
-    )
 
     total_chars = sum(len(image.b64) for image in images)
     if total_chars > MAX_TOTAL_BASE64_CHARS:
@@ -3210,16 +3091,14 @@ def generate(payload: GenerateRequest) -> GenerateResponse:
 
     return GenerateResponse(
         provider=payload.provider,
-        model_id=effective_model_id,
+        model_id=payload.model_id,
         mode=plan.mode,
         target_frame_index=plan.target_frame_index,
         images=[image.b64 for image in images],
         mime_types=[image.mime_type for image in images],
-        fallback_from=fallback_from,
-        warning=warning,
         usage=_build_usage_info(
             payload.provider,
-            effective_model_id,
+            payload.model_id,
             result.usage,
             len(images),
             elapsed_ms,
