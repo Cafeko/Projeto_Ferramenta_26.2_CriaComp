@@ -1,4 +1,4 @@
-import { Clock, Coins, Gauge, Loader2, RotateCcw, Sparkles, Wand2 } from 'lucide-react'
+import { Clock, Coins, Gauge, Hash, Loader2, RotateCcw, Sparkles, Wand2 } from 'lucide-react'
 
 import { formatDuration, formatUsd } from '../../lib/api'
 import { qualityGrade } from '../../utils/qualityMetrics'
@@ -177,7 +177,12 @@ export default function UsagePanel({ history, onReset, quality, qualityBusy, onE
     (acc, entry) => {
       acc.calls += 1
       acc.timeMs += entry.usage.clientElapsedMs
-      acc.tokens += entry.usage.totalTokens ?? 0
+      acc.inputTokens += entry.usage.inputTokens ?? 0
+      acc.outputTokens += entry.usage.outputTokens ?? 0
+      if (typeof entry.usage.totalTokens === 'number') {
+        acc.tokens += entry.usage.totalTokens
+        acc.tokenCalls += 1
+      }
       if (entry.usage.costUsd !== null) {
         acc.cost += entry.usage.costUsd
         if (entry.usage.costSource === 'estimate') acc.estimated += 1
@@ -190,13 +195,25 @@ export default function UsagePanel({ history, onReset, quality, qualityBusy, onE
       }
       return acc
     },
-    { calls: 0, timeMs: 0, tokens: 0, cost: 0, estimated: 0, uncosted: 0, qualitySum: 0, rated: 0 },
+    {
+      calls: 0,
+      timeMs: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      tokens: 0,
+      tokenCalls: 0,
+      cost: 0,
+      estimated: 0,
+      uncosted: 0,
+      qualitySum: 0,
+      rated: 0,
+    },
   )
 
   return (
     <Card
-      title="Métricas"
-      subtitle="Tempo, custo e qualidade de cada chamada à IA"
+      title="Uso e custo da IA"
+      subtitle="Tokens, custo, tempo e qualidade por chamada"
       icon={Gauge}
       badge={
         history.length > 0 && (
@@ -221,8 +238,8 @@ export default function UsagePanel({ history, onReset, quality, qualityBusy, onE
       {!last ? (
         !showQuality && (
           <p className="text-[11px] leading-relaxed text-slate-500">
-            Gere ou corrija frames para ver o tempo, os tokens, o custo e a
-            qualidade de cada chamada. O total acumulado fica salvo neste navegador.
+            Gere ou corrija frames para ver os tokens usados, o custo, o tempo e
+            a qualidade de cada chamada. O total acumulado fica salvo neste navegador.
           </p>
         )
       ) : (
@@ -250,13 +267,25 @@ export default function UsagePanel({ history, onReset, quality, qualityBusy, onE
                 }
               />
               <Metric
+                icon={Hash}
+                label="Tokens usados"
+                value={formatTokens(last.usage.totalTokens)}
+                hint={
+                  last.usage.totalTokens !== null
+                    ? `${formatTokens(last.usage.inputTokens)} entrada · ${formatTokens(last.usage.outputTokens)} saída`
+                    : `${last.usage.imageCount} imagem(ns) · tokens não informados`
+                }
+              />
+              <Metric
                 icon={Coins}
                 label="Custo"
                 value={formatUsd(last.usage.costUsd)}
                 hint={
-                  last.usage.totalTokens !== null
-                    ? `${formatTokens(last.usage.inputTokens)} in · ${formatTokens(last.usage.outputTokens)} out`
-                    : `${last.usage.imageCount} imagem(ns)`
+                  last.usage.costSource === 'estimate'
+                    ? 'Estimativa baseada nos preços do modelo'
+                    : last.usage.costSource === 'provider'
+                      ? 'Valor informado pelo provedor'
+                      : 'Custo não informado pelo provedor'
                 }
               />
             </div>
@@ -282,10 +311,20 @@ export default function UsagePanel({ history, onReset, quality, qualityBusy, onE
                 hint={`${totals.calls} ${plural(totals.calls, 'chamada')}`}
               />
               <Metric
+                icon={Hash}
+                label="Tokens usados"
+                value={totals.tokenCalls > 0 ? formatTokens(totals.tokens) : '—'}
+                hint={
+                  totals.tokenCalls > 0
+                    ? `${formatTokens(totals.inputTokens)} entrada · ${formatTokens(totals.outputTokens)} saída`
+                    : 'Provedor não informou tokens'
+                }
+              />
+              <Metric
                 icon={Clock}
                 label="Tempo total"
                 value={formatDuration(totals.timeMs)}
-                hint={`${formatTokens(totals.tokens)} tokens`}
+                hint={`${totals.calls} chamada${totals.calls === 1 ? '' : 's'}`}
               />
               {totals.rated > 0 && (
                 <Metric
