@@ -221,6 +221,60 @@ export default function ReferencePanel({
               {referenceError}
             </Alert>
           )}
+
+          <div className="mt-3 border-t border-white/10 pt-3">
+            <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
+              <Grid3X3 className="size-3.5 text-cyan-400" />
+              Frames a Gerar
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label
+                  className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-slate-400"
+                  htmlFor="generation-columns"
+                >
+                  Colunas
+                </label>
+                <input
+                  id="generation-columns"
+                  type="number"
+                  min={1}
+                  max={64}
+                  value={generationColumns}
+                  onChange={(event) =>
+                    onGenerationColumnsChange(event.target.value)
+                  }
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label
+                  className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-slate-400"
+                  htmlFor="generation-rows"
+                >
+                  Linhas
+                </label>
+                <input
+                  id="generation-rows"
+                  type="number"
+                  min={1}
+                  max={64}
+                  value={generationRows}
+                  onChange={(event) =>
+                    onGenerationRowsChange(event.target.value)
+                  }
+                  className={inputClass}
+                />
+              </div>
+            </div>
+            <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+              A IA desenha {parsedGenerationColumns}×{parsedGenerationRows} ={' '}
+              <strong className="text-slate-300">
+                {generationTotal} frame(s)
+              </strong>
+              . É independente da grade de recorte.
+            </p>
+          </div>
         </div>
       </Card>
 
@@ -434,61 +488,6 @@ export default function ReferencePanel({
               </p>
             </div>
           </Field>
-        </div>
-      </Card>
-
-      <Card
-        title="Frames a Gerar"
-        subtitle="Grade que a IA deve desenhar"
-        icon={Grid3X3}
-      >
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label
-                className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-slate-400"
-                htmlFor="generation-columns"
-              >
-                Colunas
-              </label>
-              <input
-                id="generation-columns"
-                type="number"
-                min={1}
-                max={64}
-                value={generationColumns}
-                onChange={(event) =>
-                  onGenerationColumnsChange(event.target.value)
-                }
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label
-                className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-slate-400"
-                htmlFor="generation-rows"
-              >
-                Linhas
-              </label>
-              <input
-                id="generation-rows"
-                type="number"
-                min={1}
-                max={64}
-                value={generationRows}
-                onChange={(event) =>
-                  onGenerationRowsChange(event.target.value)
-                }
-                className={inputClass}
-              />
-            </div>
-          </div>
-          <p className="text-[10px] leading-relaxed text-slate-500">
-            A IA desenha {parsedGenerationColumns}×{parsedGenerationRows} ={' '}
-            <strong className="text-slate-300">{generationTotal} frame(s)</strong>
-            . É independente da grade de recorte: se a detecção falhar, informe
-            aqui a grade real da folha (ex.: 4×2 = 8 frames).
-          </p>
         </div>
       </Card>
 

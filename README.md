@@ -343,8 +343,8 @@ duas colunas em tablets):
   central) só exibe/fatia; a **grade de geração** fica em **Frames a Gerar**
   (nesta coluna), é independente e define `frame_count` — por exemplo, uma folha
   de 8 frames detectada como 1×1 ainda pode ser gerada em 4×2 (= 8 frames).
-- **Frames a Gerar:** colunas × linhas que a IA deve desenhar. Fica na coluna
-  esquerda, junto dos inputs de geração, e não altera o recorte.
+- **Frames a Gerar:** colunas × linhas que a IA deve desenhar, dentro do card
+  **Referência de Movimento**, junto do upload. Não altera o recorte.
 - **Presets rápidos:** removidos da interface; o gerador procedural continua
   guardado em `src/utils/presets.js` para uso futuro.
 - **Prompt:** aparência do personagem e estilo de arte. A aparência pode ser
