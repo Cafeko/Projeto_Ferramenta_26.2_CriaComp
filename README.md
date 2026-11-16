@@ -48,11 +48,13 @@ Artistas & Designers: Para explorar variações visuais e rascunhar movimentaç�
 │   ├── lib/api.js        # Cliente do backend e normalização de erros
 │   ├── utils/
 │   │   ├── imagePipeline.js       # Recorte, alinhamento, grade e GIF (Canvas)
+│   │   ├── qualityMetrics.js      # Nota de qualidade (pose, consistência, pixel art)
 │   │   └── presets.js             # Presets guardados (Walk/Run/Attack) para uso futuro
 │   ├── index.css         # Tailwind + tema base + xadrez de transparência
 │   └── main.jsx
 ├── tests/
-│   └── image-pipeline.html        # 22 testes do pipeline no navegador
+│   ├── image-pipeline.html        # 22 testes do pipeline no navegador
+│   └── quality-metrics.html       # 18 testes da métrica de qualidade
 ├── index.html
 ├── vite.config.js        # Proxy /api -> http://127.0.0.1:8000
 ├── vercel.json           # Services: /api/* -> FastAPI, resto -> Vite
@@ -394,6 +396,32 @@ await exportGIF(aligned, 8)
 Os testes de navegador ficam em `tests/image-pipeline.html`: com `npm run dev`,
 abra `http://localhost:5173/tests/image-pipeline.html` (22 verificações de
 recorte, alinhamento, compilação, GIF e erros).
+
+## 📊 Métricas: tempo, custo e qualidade
+
+O painel **Métricas** mostra, para cada chamada à IA, o tempo, o custo e a
+**qualidade** do resultado, além da média acumulada. A qualidade é calculada
+em `src/utils/qualityMetrics.js`, **no navegador e sem chamar a IA** (avaliar
+não pode gerar custo nem tempo extra). A nota vai de 0 a 100 e mede a
+promessa central da ferramenta: transferir a pose da referência para um
+personagem consistente, em pixel art utilizável.
+
+| Componente | Peso | Como é medido |
+| --- | --- | --- |
+| Fidelidade de pose | 45% | IoU suave entre a silhueta de cada frame gerado e a do frame de referência correspondente, numa grade 24×24 normalizada (tamanho e posição do sprite não importam) |
+| Consistência do personagem | 35% | Interseção do histograma de cores de cada frame com o histograma médio da animação |
+| Pixel art utilizável | 20% | Número de cores dominantes (que cobrem 95% do personagem) e tipo de fundo (transparente > sólido > cenário) |
+
+- Frames vazios ou faltando multiplicam a nota pela fração de frames válidos.
+- Sem referência fatiada (uma imagem para vários frames), a pose não é
+  avaliada e o peso dela é redistribuído entre os outros dois componentes.
+- O frame que destoa da média (10 pontos abaixo ou mais) aparece com um
+  atalho para a correção individual.
+- A nota é heurística: serve para comparar tentativas (modelos, prompts,
+  correções) entre si, não como verdade absoluta.
+
+Testes: com `npm run dev`, abra `http://localhost:5173/tests/quality-metrics.html`
+(18 verificações com sprites sintéticos).
 
 ## ☁️ Deploy na Vercel
 

@@ -31,6 +31,7 @@ import {
   resizeFrameToMatch,
   sliceSpritesheet,
 } from '../utils/imagePipeline'
+import { evaluateAnimationQuality } from '../utils/qualityMetrics'
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024
 const MAX_REFERENCE_SIDE = 1200
@@ -403,6 +404,60 @@ export default function MainDashboard() {
   )
 
   const handleResetUsage = useCallback(() => setUsageHistory([]), [])
+
+  /* ------------------------ Métrica de qualidade ------------------------ */
+  // Avaliada no navegador sempre que os frames exibidos mudam (geração,
+  // correção aplicada ou novo recorte da grade). A nota também é anexada à
+  // última chamada do histórico, para comparar custo × tempo × qualidade.
+  const [quality, setQuality] = useState(null)
+  const [qualityBusy, setQualityBusy] = useState(false)
+
+  useEffect(() => {
+    if (frames.length === 0 || slicingResult || generating) {
+      if (frames.length === 0) {
+        setQuality(null)
+        setQualityBusy(false)
+      }
+      return undefined
+    }
+
+    let cancelled = false
+    setQualityBusy(true)
+    evaluateAnimationQuality({ frames, referenceFrames })
+      .then((report) => {
+        if (cancelled || !report) return
+        setQuality(report)
+        setUsageHistory((current) => {
+          if (current.length === 0) return current
+          const last = current[current.length - 1]
+          return [
+            ...current.slice(0, -1),
+            {
+              ...last,
+              quality: {
+                score: report.score,
+                pose: report.pose,
+                consistency: report.consistency,
+                pixelArt: report.pixelArt,
+              },
+            },
+          ]
+        })
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn('[quality]', error)
+          setQuality(null)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setQualityBusy(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [frames, referenceFrames, slicingResult, generating])
 
   /* ------------------ Fatiamento da referência -------------------------- */
   useEffect(() => {
@@ -1628,7 +1683,13 @@ export default function MainDashboard() {
             elapsed={elapsed}
           />
 
-          <UsagePanel history={usageHistory} onReset={handleResetUsage} />
+          <UsagePanel
+            history={usageHistory}
+            onReset={handleResetUsage}
+            quality={quality}
+            qualityBusy={qualityBusy}
+            onEditFrame={frames.length > 1 ? handleEditFrame : null}
+          />
 
           <ExportPanel
             frames={frames}
