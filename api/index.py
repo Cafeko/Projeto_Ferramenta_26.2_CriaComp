@@ -18,6 +18,8 @@ import binascii
 import logging
 import math
 import os
+import re
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Iterable, Literal
@@ -1323,15 +1325,14 @@ def _build_prompt_plan(request: GenerateRequest) -> PromptPlan:
 # Cada provedor informa o consumo de um jeito diferente:
 #   - OpenRouter: devolve o custo REAL em USD (`usage.cost`).
 #   - OpenAI (GPT Image) e Gemini: devolvem tokens, mas não o valor em USD.
-#     O custo é ESTIMADO multiplicando os tokens pela tabela abaixo.
+#     O custo é ESTIMADO com os preços do catálogo online (LiteLLM) ou da
+#     tabela local de fallback.
 #   - OpenAI (DALL·E): não devolve tokens; preço fixo por imagem.
-#   - Replicate: não devolve custo. Modelos oficiais cobram por imagem (tabela
-#     abaixo); os demais cobram por segundo de GPU, que a API não detalha.
+#   - Replicate: não devolve custo. O preço vem do LiteLLM ou da página pública
+#     do modelo (por imagem ou por segundo de GPU).
 #
-# A tabela só contém preços conferidos. Modelo fora dela => custo
-# "indisponível", mas os tokens continuam sendo exibidos.
-
-PRICING_UPDATED_AT = "2026-11"
+# Se nenhuma fonte tiver o modelo, usa uma estimativa genérica do provedor para
+# que o painel sempre mostre um valor aproximado.
 
 
 @dataclass(frozen=True)
@@ -1356,6 +1357,18 @@ class ImagePrice:
             if key == size:
                 return value
         return self.per_image
+
+
+@dataclass(frozen=True)
+class PriceEntry:
+    """Preços possíveis de um modelo, com a fonte usada na estimativa."""
+
+    token: TokenPrice | None = None
+    image: ImagePrice | None = None
+    per_second: float | None = None
+    source: Literal["litellm", "openrouter", "replicate", "static", "fallback"] = (
+        "static"
+    )
 
 
 _PRICING: dict[str, dict[str, TokenPrice | ImagePrice]] = {
@@ -1396,8 +1409,308 @@ def _pricing_key(provider: str, model_id: str) -> str:
     return key
 
 
-def _lookup_price(provider: str, model_id: str) -> TokenPrice | ImagePrice | None:
-    return _PRICING.get(provider, {}).get(_pricing_key(provider, model_id))
+# ---------------------------------------------------------------------------
+# Catálogo de preços online
+# ---------------------------------------------------------------------------
+# O valor em USD raramente vem na resposta do provedor. Para não depender de uma
+# tabela local que envelhece, usamos três fontes públicas (com cache):
+#   1. LiteLLM model_prices_and_context_window.json (comunidade, ampla cobertura)
+#   2. OpenRouter /api/v1/models (preços do próprio OpenRouter)
+#   3. Página pública do modelo no Replicate (preço por imagem ou por segundo)
+# A tabela local abaixo fica como fallback quando a rede falha.
+
+_PRICING_TTL_SECONDS = _env_float("PRICING_CACHE_TTL_SECONDS", "3600")
+_PRICING_RETRY_SECONDS = _env_float("PRICING_RETRY_SECONDS", "600")
+_LITELLM_PRICING_URL = os.getenv(
+    "PRICING_LITELLM_URL",
+    "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json",
+)
+_OPENROUTER_PRICING_URL = os.getenv(
+    "PRICING_OPENROUTER_URL", "https://openrouter.ai/api/v1/models"
+)
+_PRICING_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; SpriteTransfer/1.0)"}
+_PRICING_LOCK = threading.Lock()
+
+_litellm_cache: dict[str, Any] = {}
+_litellm_cached_at = 0.0
+_litellm_failed_at = 0.0
+_openrouter_cache: dict[str, Any] = {}
+_openrouter_cached_at = 0.0
+_openrouter_failed_at = 0.0
+_replicate_cache: dict[str, tuple[float, PriceEntry | None]] = {}
+
+_GENERIC_PRICES: dict[str, PriceEntry] = {
+    "gemini": PriceEntry(image=ImagePrice(0.039), source="fallback"),
+    "openai": PriceEntry(image=ImagePrice(0.04), source="fallback"),
+    "openrouter": PriceEntry(image=ImagePrice(0.04), source="fallback"),
+    # No Replicate, o custo por segundo é mais próximo para modelos de GPU.
+    "replicate": PriceEntry(
+        image=ImagePrice(0.03), per_second=0.0013, source="fallback"
+    ),
+}
+
+
+def _price_number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _entry_from_litellm(raw: Any) -> PriceEntry | None:
+    if not isinstance(raw, dict):
+        return None
+    text_in = _price_number(raw.get("input_cost_per_token"))
+    image_in = _price_number(raw.get("input_cost_per_image_token"))
+    text_out = _price_number(raw.get("output_cost_per_token"))
+    image_out = _price_number(raw.get("output_cost_per_image_token"))
+    per_image = _price_number(raw.get("output_cost_per_image"))
+    per_second = _price_number(raw.get("output_cost_per_second"))
+    if per_second is None:
+        per_second = _price_number(raw.get("input_cost_per_second"))
+
+    token = None
+    if any(value is not None for value in (text_in, image_in, text_out, image_out)):
+        token = TokenPrice(
+            (text_in or 0.0) * 1_000_000,
+            (image_in if image_in is not None else (text_in or 0.0)) * 1_000_000,
+            (image_out if image_out is not None else (text_out or 0.0)) * 1_000_000,
+            (text_out or 0.0) * 1_000_000,
+        )
+    image = ImagePrice(per_image) if per_image is not None else None
+    if token is None and image is None and per_second is None:
+        return None
+    return PriceEntry(
+        token=token, image=image, per_second=per_second, source="litellm"
+    )
+
+
+def _load_litellm_prices() -> dict[str, Any]:
+    global _litellm_cache, _litellm_cached_at, _litellm_failed_at
+    now = time.monotonic()
+    with _PRICING_LOCK:
+        if _litellm_cache and now - _litellm_cached_at < _PRICING_TTL_SECONDS:
+            return _litellm_cache
+        if (
+            not _litellm_cache
+            and _litellm_failed_at
+            and now - _litellm_failed_at < _PRICING_RETRY_SECONDS
+        ):
+            return {}
+        try:
+            response = requests.get(
+                _LITELLM_PRICING_URL,
+                headers=_PRICING_HEADERS,
+                timeout=(4, 12),
+            )
+            response.raise_for_status()
+            data = response.json()
+            if isinstance(data, dict):
+                _litellm_cache = {
+                    str(key).lower(): value
+                    for key, value in data.items()
+                    if isinstance(value, dict)
+                }
+                _litellm_cached_at = now
+                _litellm_failed_at = 0.0
+                return _litellm_cache
+        except Exception as exc:
+            logger.warning("Falha ao baixar preços do LiteLLM: %s", exc)
+            _litellm_failed_at = now
+        return _litellm_cache
+
+
+def _load_openrouter_models() -> dict[str, Any]:
+    global _openrouter_cache, _openrouter_cached_at, _openrouter_failed_at
+    now = time.monotonic()
+    with _PRICING_LOCK:
+        if _openrouter_cache and now - _openrouter_cached_at < _PRICING_TTL_SECONDS:
+            return _openrouter_cache
+        if (
+            not _openrouter_cache
+            and _openrouter_failed_at
+            and now - _openrouter_failed_at < _PRICING_RETRY_SECONDS
+        ):
+            return {}
+        try:
+            response = requests.get(
+                _OPENROUTER_PRICING_URL,
+                headers=_PRICING_HEADERS,
+                timeout=(4, 10),
+            )
+            response.raise_for_status()
+            data = response.json()
+            items = data.get("data") if isinstance(data, dict) else None
+            if isinstance(items, list):
+                _openrouter_cache = {
+                    str(item.get("id")).lower(): item
+                    for item in items
+                    if isinstance(item, dict) and item.get("id")
+                }
+                _openrouter_cached_at = now
+                _openrouter_failed_at = 0.0
+                return _openrouter_cache
+        except Exception as exc:
+            logger.warning("Falha ao baixar preços do OpenRouter: %s", exc)
+            _openrouter_failed_at = now
+        return _openrouter_cache
+
+
+def _openrouter_entry(model_id: str) -> PriceEntry | None:
+    catalog = _load_openrouter_models()
+    if not catalog:
+        return None
+    key = model_id.strip().lower()
+    item = catalog.get(key) or catalog.get(_pricing_key("openrouter", model_id))
+    if not isinstance(item, dict):
+        return None
+    pricing = item.get("pricing")
+    if not isinstance(pricing, dict):
+        return None
+
+    prompt = _price_number(pricing.get("prompt"))
+    completion = _price_number(pricing.get("completion"))
+    image_in = _price_number(pricing.get("image"))
+    image_out = _price_number(pricing.get("image_output"))
+    if all(value is None for value in (prompt, completion, image_in, image_out)):
+        return None
+    token = TokenPrice(
+        (prompt or 0.0) * 1_000_000,
+        (image_in if image_in is not None else (prompt or 0.0)) * 1_000_000,
+        (image_out if image_out is not None else (completion or 0.0)) * 1_000_000,
+        (completion or 0.0) * 1_000_000,
+    )
+    return PriceEntry(token=token, source="openrouter")
+
+
+def _replicate_page_entry(model_id: str) -> PriceEntry | None:
+    key = model_id.strip().lower().split(":", 1)[0]
+    now = time.monotonic()
+    cached = _replicate_cache.get(key)
+    if cached:
+        ttl = (
+            _PRICING_TTL_SECONDS
+            if cached[1] is not None
+            else _PRICING_RETRY_SECONDS
+        )
+        if now - cached[0] < ttl:
+            return cached[1]
+
+    entry: PriceEntry | None = None
+    try:
+        response = requests.get(
+            f"https://replicate.com/{key}",
+            headers=_PRICING_HEADERS,
+            timeout=(4, 10),
+        )
+        response.raise_for_status()
+        html = response.text
+        per_image: list[float] = []
+        for raw in re.findall(r'\{[^{}]*"metric"[^{}]*\}', html):
+            metric = re.search(r'"metric":\s*"([^"]+)"', raw)
+            price = re.search(r'"price":\s*"\$([0-9.]+)"', raw)
+            title = re.search(r'"title":\s*"([^"]+)"', raw)
+            if not price:
+                continue
+            is_output_image = metric and metric.group(1) == "image_output_count"
+            title_text = (title.group(1).strip().lower() if title else "")
+            if is_output_image or title_text == "per output image":
+                per_image.append(float(price.group(1)))
+        if per_image:
+            unique = sorted(set(per_image))
+            median = unique[len(unique) // 2]
+            entry = PriceEntry(image=ImagePrice(median), source="replicate")
+        else:
+            p50 = re.search(r'"p50price":\s*"\$([0-9.]+)"', html)
+            if p50:
+                entry = PriceEntry(
+                    per_second=float(p50.group(1)), source="replicate"
+                )
+    except Exception as exc:
+        logger.warning(
+            "Falha ao consultar preço no Replicate para %s: %s", model_id, exc
+        )
+
+    _replicate_cache[key] = (now, entry)
+    return entry
+
+
+def _litellm_candidates(provider: str, model_id: str) -> list[str]:
+    raw = model_id.strip().lower()
+    base = _pricing_key(provider, model_id)
+    if provider == "gemini":
+        candidates = [
+            f"gemini/{base}",
+            base,
+            f"vertex_ai/{base}",
+            f"gemini/{raw}",
+            raw,
+        ]
+        if base == "gemini-nano-banana":
+            candidates += [
+                "gemini/gemini-2.5-flash-image",
+                "gemini-2.5-flash-image",
+            ]
+        return candidates
+    if provider == "replicate":
+        return [f"replicate/{base}", f"replicate/{raw}", base, raw]
+    if provider == "openai":
+        return [base, raw, f"openai/{base}"]
+    if provider == "openrouter":
+        tail = raw.split("/", 1)[1] if "/" in raw else raw
+        return [
+            raw,
+            base,
+            tail,
+            f"openrouter/{raw}",
+            f"openrouter/{tail}",
+            f"gemini/{base}",
+            base,
+        ]
+    return [base, raw]
+
+
+def _litellm_entry(provider: str, model_id: str) -> PriceEntry | None:
+    catalog = _load_litellm_prices()
+    if not catalog:
+        return None
+    for candidate in _litellm_candidates(provider, model_id):
+        entry = _entry_from_litellm(catalog.get(candidate.lower()))
+        if entry is not None:
+            return entry
+    return None
+
+
+def _static_entry(provider: str, model_id: str) -> PriceEntry | None:
+    price = _PRICING.get(provider, {}).get(_pricing_key(provider, model_id))
+    if isinstance(price, TokenPrice):
+        return PriceEntry(token=price, source="static")
+    if isinstance(price, ImagePrice):
+        return PriceEntry(image=price, source="static")
+    return None
+
+
+def _lookup_price_entry(provider: str, model_id: str) -> PriceEntry | None:
+    entry: PriceEntry | None = None
+    if provider == "openrouter":
+        entry = _openrouter_entry(model_id) or _litellm_entry(provider, model_id)
+    elif provider == "replicate":
+        entry = _litellm_entry(provider, model_id) or _replicate_page_entry(
+            model_id
+        )
+    else:
+        entry = _litellm_entry(provider, model_id)
+    return (
+        entry
+        or _static_entry(provider, model_id)
+        or _GENERIC_PRICES.get(provider)
+    )
 
 
 def _as_int(value: Any) -> int | None:
@@ -1459,50 +1772,81 @@ class UsageInfo(BaseModel):
 GenerateResponse.model_rebuild()
 
 
+_PRICE_SOURCE_LABELS = {
+    "litellm": "online (LiteLLM)",
+    "openrouter": "online (OpenRouter)",
+    "replicate": "publicado no Replicate",
+    "static": "tabela local",
+    "fallback": "estimativa genérica do provedor",
+}
+
+
 def _estimate_cost(
     provider: str, model_id: str, usage: ProviderUsage
 ) -> tuple[float | None, str | None]:
-    price = _lookup_price(provider, model_id)
-    if price is None:
+    entry = _lookup_price_entry(provider, model_id)
+    if entry is None:
         return None, None
 
-    if isinstance(price, ImagePrice):
-        count = usage.image_count or 0
-        if count <= 0:
-            return None, None
-        return price.for_size(usage.size) * count, f"{count} imagem(ns) × preço fixo"
+    source = _PRICE_SOURCE_LABELS.get(entry.source, entry.source)
+    image_count = usage.image_count or 0
 
-    if usage.input_tokens is None and usage.output_tokens is None:
-        return None, None
+    if entry.token is not None and (
+        usage.input_tokens is not None or usage.output_tokens is not None
+    ):
+        input_total = usage.input_tokens or 0
+        image_in = usage.input_image_tokens
+        text_in = usage.input_text_tokens
+        if image_in is None and text_in is None:
+            # Sem detalhamento: cobra tudo pela tarifa de imagem (pior caso).
+            image_in, text_in = input_total, 0
+        elif image_in is None:
+            image_in = max(0, input_total - (text_in or 0))
+        elif text_in is None:
+            text_in = max(0, input_total - image_in)
 
-    input_total = usage.input_tokens or 0
-    image_in = usage.input_image_tokens
-    text_in = usage.input_text_tokens
-    if image_in is None and text_in is None:
-        # Sem detalhamento: cobra tudo pela tarifa de imagem (pior caso).
-        image_in, text_in = input_total, 0
-    elif image_in is None:
-        image_in = max(0, input_total - (text_in or 0))
-    elif text_in is None:
-        text_in = max(0, input_total - image_in)
+        output_total = usage.output_tokens or 0
+        image_out = usage.output_image_tokens
+        text_out = usage.output_text_tokens
+        if image_out is None and text_out is None:
+            image_out, text_out = output_total, 0
+        elif image_out is None:
+            image_out = max(0, output_total - (text_out or 0))
+        elif text_out is None:
+            text_out = max(0, output_total - image_out)
 
-    output_total = usage.output_tokens or 0
-    image_out = usage.output_image_tokens
-    text_out = usage.output_text_tokens
-    if image_out is None and text_out is None:
-        image_out, text_out = output_total, 0
-    elif image_out is None:
-        image_out = max(0, output_total - (text_out or 0))
-    elif text_out is None:
-        text_out = max(0, output_total - image_out)
+        price: TokenPrice = entry.token
+        cost = (
+            text_in * price.text_input
+            + image_in * price.image_input
+            + image_out * price.image_output
+            + text_out * (price.text_output or price.text_input)
+        ) / 1_000_000
+        return cost, f"tokens × preços {source}"
 
-    cost = (
-        text_in * price.text_input
-        + image_in * price.image_input
-        + image_out * price.image_output
-        + text_out * (price.text_output or price.text_input)
-    ) / 1_000_000
-    return cost, "tokens × tabela de preços"
+    if entry.per_second is not None and usage.compute_seconds:
+        seconds = max(0.0, float(usage.compute_seconds))
+        return (
+            entry.per_second * seconds,
+            f"{seconds:.1f}s de GPU × preço por segundo ({source})",
+        )
+
+    if entry.image is not None and image_count > 0:
+        return (
+            entry.image.for_size(usage.size) * image_count,
+            f"{image_count} imagem(ns) × preço por imagem ({source})",
+        )
+
+    # Último recurso: mantém um valor aproximado quando o provedor não informou
+    # tokens nem tempo de GPU (ex.: Replicate sem metrics.predict_time).
+    generic = _GENERIC_PRICES.get(provider)
+    if generic is not None and generic.image is not None and image_count > 0:
+        return (
+            generic.image.for_size(usage.size) * image_count,
+            f"{image_count} imagem(ns) × estimativa genérica do provedor",
+        )
+
+    return None, None
 
 
 def _build_usage_info(
@@ -1534,13 +1878,17 @@ def _build_usage_info(
         info.cost_note = f"Valor cobrado informado pelo provedor {PROVIDER_LABELS[provider]}."
         return info
 
-    cost, how = _estimate_cost(provider, model_id, usage)
+    try:
+        cost, how = _estimate_cost(provider, model_id, usage)
+    except Exception as exc:
+        # Uma falha no catálogo de preços nunca deve derrubar a geração.
+        logger.warning("Falha ao estimar o custo: %s", exc)
+        cost, how = None, None
     if cost is not None:
         info.cost_usd = round(cost, 6)
         info.cost_source = "estimate"
         info.cost_note = (
-            f"Estimativa ({how}, preços de {PRICING_UPDATED_AT}). "
-            "Confira o valor final no painel do provedor."
+            f"Estimativa ({how}). Confira o valor final no painel do provedor."
         )
         return info
 

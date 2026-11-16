@@ -468,6 +468,23 @@ não pode gerar custo nem tempo extra). A nota vai de 0 a 100 e mede a
 promessa central da ferramenta: transferir a pose da referência para um
 personagem consistente, em pixel art utilizável.
 
+### Como o custo é obtido
+
+- **OpenRouter**: usa o custo real informado na própria resposta.
+- **Gemini e OpenAI**: estimativa por tokens com o catálogo online do
+  [LiteLLM](https://github.com/BerriAI/litellm), que é atualizado pela
+  comunidade e cobre os modelos de imagem mais usados.
+- **Replicate**: lê o preço publicado na página do modelo (por imagem ou por
+  segundo de GPU) quando o LiteLLM não tem a entrada.
+- **Fallback**: tabela local e, se o modelo não existir em nenhuma fonte, uma
+  estimativa genérica do provedor — assim o painel sempre mostra um valor
+  aproximado.
+- Os catálogos ficam em cache por `PRICING_CACHE_TTL_SECONDS` (padrão **1 h**).
+  As URLs podem ser trocadas por `PRICING_LITELLM_URL` e
+  `PRICING_OPENROUTER_URL`. Em caso de falha de rede, usa a tabela local.
+- O painel mostra a fonte do valor em `cost_note` (ex.: “tokens × preços online
+  (LiteLLM)”, “publicado no Replicate”, “estimativa genérica”).
+
 | Componente | Peso | Como é medido |
 | --- | --- | --- |
 | Fidelidade de pose | 45% | IoU suave entre a silhueta de cada frame gerado e a do frame de referência correspondente, numa grade 24×24 normalizada (tamanho e posição do sprite não importam) |
