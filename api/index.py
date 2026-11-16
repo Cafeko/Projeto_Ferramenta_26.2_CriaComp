@@ -2672,11 +2672,19 @@ def _replicate_cancel(api_key: str, prediction: dict[str, Any]) -> None:
 
 
 def _replicate_wait(
-    api_key: str, prediction: dict[str, Any]
+    api_key: str,
+    prediction: dict[str, Any],
+    *,
+    model_id: str | None = None,
+    timeout_seconds: float | None = None,
 ) -> dict[str, Any]:
-    deadline = time.monotonic() + float(
-        os.getenv("REPLICATE_TIMEOUT_SECONDS", "200")
+    budget = (
+        float(timeout_seconds)
+        if timeout_seconds is not None
+        else float(os.getenv("REPLICATE_TIMEOUT_SECONDS", "200"))
     )
+    deadline = time.monotonic() + max(5.0, budget)
+    model_label = model_id or str(prediction.get("model") or "o modelo escolhido")
     status = prediction.get("status")
     headers = _replicate_headers(api_key)
 
@@ -2685,8 +2693,9 @@ def _replicate_wait(
             _replicate_cancel(api_key, prediction)
             raise ApiError(
                 504,
-                "O Replicate ainda está processando a imagem e o tempo limite foi "
-                "atingido. Tente novamente ou escolha um modelo mais rápido.",
+                f"O Replicate ainda está processando a imagem com {model_label} e "
+                "o tempo limite foi atingido. Tente novamente ou escolha um "
+                "modelo mais rápido.",
                 code="provider_timeout",
                 provider="replicate",
             )
@@ -2717,7 +2726,8 @@ def _replicate_wait(
         if status == "canceled":
             raise ApiError(
                 502,
-                "A geração no Replicate foi cancelada antes de terminar.",
+                f"A geração com {model_label} no Replicate foi cancelada antes de "
+                "terminar.",
                 code="generation_canceled",
                 provider="replicate",
                 details=error,
@@ -2762,9 +2772,22 @@ def _replicate_wait(
                 provider="replicate",
                 details=error,
             )
+        # Erros internos do modelo (ex.: ModelError E002 do Google/OpenAI dentro
+        # do Replicate). Não dependem da chave do usuário nem do payload: são
+        # falhas transitórias do provedor que outro modelo pode não ter.
+        if "e002" in lowered or "modelerror" in lowered:
+            raise ApiError(
+                502,
+                f"O Replicate falhou ao executar o modelo {model_label}: erro "
+                "interno do provedor (E002). Tente novamente em instantes ou "
+                "escolha outro modelo.",
+                code="provider_model_error",
+                provider="replicate",
+                details=error,
+            )
         raise ApiError(
             502,
-            f"O Replicate não conseguiu gerar a imagem: {error}",
+            f"O Replicate não conseguiu gerar a imagem com {model_label}: {error}",
             code="generation_failed",
             provider="replicate",
             details=error,
@@ -2864,41 +2887,91 @@ class ReplicateAdapter(ProviderAdapter):
             ),
         )
 
+    # Falhas do provedor que outro modelo pode não ter. Erros de payload
+    # (invalid_request), segurança e rate limit não entram: repetir com outro
+    # modelo não resolveria e poderia esconder o problema.
+    _RECOVERABLE_FAILURES = {
+        "provider_auth_failed",
+        "provider_model_error",
+        "generation_failed",
+        "provider_timeout",
+        "no_image_returned",
+        "invalid_provider_response",
+    }
+
     def generate(
         self, api_key: str, model_id: str, plan: PromptPlan
     ) -> AdapterResult:
-        try:
-            return self._generate_with_model(api_key, model_id, plan)
-        except ApiError as exc:
-            if not self._is_google_auth_failure(exc) or not model_id.lower().startswith(
-                "google/"
-            ):
-                raise
-            # Credencial interna do Replicate com o Google indisponível: o
-            # modelo escolhido não tem como rodar. Tenta um substituto que
-            # aceite as mesmas referências, avisando o cliente.
-            last_error: ApiError = exc
-            for candidate in _replicate_fallback_models(model_id):
-                try:
-                    result = self._generate_with_model(api_key, candidate, plan)
-                except ApiError as fallback_error:
-                    if self._is_google_auth_failure(fallback_error):
-                        continue
-                    raise
-                return AdapterResult(
-                    result.images, result.usage, model_id=candidate
-                )
-            raise last_error
+        # Orçamento total da cadeia: evita estourar o maxDuration da função
+        # quando mais de um modelo é tentado.
+        total_budget = float(
+            os.getenv("REPLICATE_TOTAL_TIMEOUT_SECONDS", "260")
+        )
+        deadline = time.monotonic() + max(30.0, total_budget)
 
-    @staticmethod
-    def _is_google_auth_failure(exc: ApiError) -> bool:
-        if exc.code == "provider_auth_failed":
+        def remaining() -> float:
+            return deadline - time.monotonic()
+
+        def attempt(candidate: str) -> AdapterResult:
+            window = max(30.0, min(200.0, remaining()))
+            return self._generate_with_model(
+                api_key, candidate, plan, timeout_seconds=window
+            )
+
+        first_error: ApiError | None = None
+        try:
+            return attempt(model_id)
+        except ApiError as exc:
+            if not self._should_try_fallback(exc, model_id):
+                raise
+            first_error = exc
+
+        # Tenta os substitutos em ordem. Se um deles falhar por erro do provedor,
+        # segue para o próximo em vez de abortar a cadeia.
+        for candidate in _replicate_fallback_models(model_id):
+            if remaining() < 30:
+                break
+            try:
+                result = attempt(candidate)
+            except ApiError as fallback_error:
+                if self._is_recoverable_failure(fallback_error):
+                    continue
+                raise
+            return AdapterResult(
+                result.images, result.usage, model_id=candidate
+            )
+
+        if first_error is not None:
+            raise first_error
+        raise ApiError(
+            502,
+            "O Replicate não conseguiu gerar a imagem com nenhum modelo "
+            "disponível. Tente novamente em instantes.",
+            code="generation_failed",
+            provider="replicate",
+        )
+
+    def _should_try_fallback(self, exc: ApiError, model_id: str) -> bool:
+        # Família Google quebrada no Replicate: qualquer falha recuperável vale
+        # uma tentativa em outro modelo. Para modelos não-Google, só erro
+        # interno do modelo justifica trocar (ex.: E002).
+        if model_id.lower().startswith("google/"):
+            return self._is_recoverable_failure(exc)
+        return exc.code == "provider_model_error"
+
+    def _is_recoverable_failure(self, exc: ApiError) -> bool:
+        if exc.code in self._RECOVERABLE_FAILURES:
             return True
         text = f"{exc.details or ''} {exc.message or ''}".lower()
-        return "invalid_grant" in text or "invalid jwt" in text
+        return "e002" in text or "modelerror" in text
 
     def _generate_with_model(
-        self, api_key: str, model_id: str, plan: PromptPlan
+        self,
+        api_key: str,
+        model_id: str,
+        plan: PromptPlan,
+        *,
+        timeout_seconds: float | None = None,
     ) -> AdapterResult:
         owner, name, version = _replicate_parse_model(model_id)
         schema, resolved_version = _replicate_fetch_schema(
@@ -2955,7 +3028,12 @@ class ReplicateAdapter(ProviderAdapter):
                 provider=self.provider,
             )
 
-        prediction = _replicate_wait(api_key, prediction)
+        prediction = _replicate_wait(
+            api_key,
+            prediction,
+            model_id=model_id,
+            timeout_seconds=timeout_seconds,
+        )
         images = _replicate_collect_images(prediction, api_key)
         if not images:
             raise ApiError(

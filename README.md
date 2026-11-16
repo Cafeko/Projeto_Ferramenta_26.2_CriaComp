@@ -157,11 +157,17 @@ modelos que só chegam a `16:9`. Se mesmo assim o provedor recusar apenas a
 proporção, a requisição é repetida uma vez sem esse campo.
 
 Quando o modelo pedido é da família `google/nano-banana*` e falha por credencial
-interna do Replicate (`provider_auth_failed`), o backend tenta automaticamente,
-em ordem, `openai/gpt-image-2`, `black-forest-labs/flux-2-pro` e
-`bytedance/seedream-4` (configurável por `REPLICATE_FALLBACK_MODELS`, separado
-por vírgulas). A resposta traz `fallback_from` e `warning`, e `model_id` passa a
-ser o modelo realmente usado; o frontend avisa o usuário com um toast.
+interna do Replicate (`provider_auth_failed`), ou quando qualquer modelo falha
+por erro interno do provedor (`provider_model_error`, ex.: `ModelError ... E002`),
+o backend tenta automaticamente, em ordem, `openai/gpt-image-2`,
+`black-forest-labs/flux-2-pro` e `bytedance/seedream-4` (configurável por
+`REPLICATE_FALLBACK_MODELS`, separado por vírgulas). Se um substituto também
+falhar por erro do provedor, a cadeia continua para o próximo em vez de abortar.
+A resposta traz `fallback_from` e `warning`, e `model_id` passa a ser o modelo
+realmente usado; o frontend avisa o usuário com um toast. Erros de payload
+(`invalid_request`), segurança e rate limit não trocam de modelo. A cadeia tem um
+orçamento total de tempo (`REPLICATE_TOTAL_TIMEOUT_SECONDS`, padrão 260 s) para
+não estourar o limite da função.
 
 ```json
 {
@@ -275,9 +281,14 @@ Todas as falhas previstas voltam com uma mensagem em português e um `code`:
 ```
 
 Códigos comuns: `invalid_api_key`, `quota_exhausted`, `rate_limit`,
-`provider_timeout`, `provider_auth_failed`, `no_image_returned`,
-`model_without_image_input`, `too_many_images`, `payload_too_large`,
-`invalid_image` e `target_frame_index_out_of_range`.
+`provider_timeout`, `provider_auth_failed`, `provider_model_error`,
+`no_image_returned`, `model_without_image_input`, `too_many_images`,
+`payload_too_large`, `invalid_image` e `target_frame_index_out_of_range`.
+
+`provider_model_error` (somente Replicate) indica que o modelo falhou dentro do
+provedor (por exemplo, `ModelError: An error occurred while processing your
+request (E002)`). Costuma ser transitório; o backend já tenta outro modelo
+automaticamente e, se todos falharem, a mensagem diz qual modelo falhou.
 
 `provider_auth_failed` (somente Replicate) indica que o próprio Replicate não
 conseguiu autenticar o modelo junto ao Google — por exemplo, os modelos
