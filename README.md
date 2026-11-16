@@ -339,11 +339,12 @@ duas colunas em tablets):
   link `Obter chave` para o console de cada provedor.
 - **Referência de movimento:** drag & drop de PNG/spritesheet. O app **detecta
   uma grade provável** pelos pixels (transparência ou cor de fundo) apenas para
-  pré-preencher a **grade de recorte** e a **grade de geração**. Esses campos são
-  a fonte da verdade e podem ser ajustados quando a detecção errar. A grade de
-  recorte só exibe; a **grade de geração (Colunas × Linhas)** é independente e
-  define `frame_count` — por exemplo, uma folha de 8 frames detectada como 1×1
-  ainda pode ser gerada em 4×2 (= 8 frames).
+  pré-preencher a grade de recorte e a de geração. A **grade de recorte** (painel
+  central) só exibe/fatia; a **grade de geração** fica em **Frames a Gerar**
+  (nesta coluna), é independente e define `frame_count` — por exemplo, uma folha
+  de 8 frames detectada como 1×1 ainda pode ser gerada em 4×2 (= 8 frames).
+- **Frames a Gerar:** colunas × linhas que a IA deve desenhar. Fica na coluna
+  esquerda, junto dos inputs de geração, e não altera o recorte.
 - **Presets rápidos:** removidos da interface; o gerador procedural continua
   guardado em `src/utils/presets.js` para uso futuro.
 - **Prompt:** aparência do personagem e estilo de arte. A aparência pode ser
@@ -371,6 +372,9 @@ duas colunas em tablets):
 - Na **tela cheia** também há **Anterior/Próximo**, alternância entre
   **Animação** e **Frame a frame** e o controle de **FPS** quando em animação;
   `←`/`→` trocam de frame e `Esc` fecha.
+- **Grade de Recorte:** fatia a referência e o resultado usando Colunas/Linhas.
+  A quantidade de frames desenhada pela IA vem de **Frames a Gerar**, na coluna
+  esquerda, e não é alterada por esta grade.
 - Filmstrip com os frames PNG numerados e o botão **`[ Editar Frame ]`** em cada
   um. A janela de edição se ajusta à tela (com rolagem) e a correção individual
   envia só aquele frame. A correção é guardada como **candidata**: a janela

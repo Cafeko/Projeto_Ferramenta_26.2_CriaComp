@@ -862,8 +862,9 @@ export default function MainDashboard() {
   /* -------------------- Limpeza ao mudar inputs da coluna esquerda -------------------- */
   useEffect(() => {
     if (frames.length === 0) return
-    // Qualquer alteração nos inputs de configuração invalida a geração anterior,
-    // forçando o usuário a regenerar do zero com os novos parâmetros.
+    // Mudanças em referência/prompt invalidam a geração anterior. Modelo e
+    // provedor ficam de fora: a validação automática da chave muda o modelo
+    // depois de restaurar a sessão e não deve apagar o resultado salvo.
     setGeneratedSheets([])
     setFrames([])
     setCorrectionFrame(null)
@@ -873,8 +874,6 @@ export default function MainDashboard() {
     setModalCandidateFrame(null)
     setModalPreviewFrame(null)
   }, [
-    provider,
-    modelId,
     appearance,
     artStyle,
     reference,
@@ -2099,6 +2098,10 @@ export default function MainDashboard() {
                 'info',
               )
             }
+            generationColumns={generationColumns}
+            generationRows={generationRows}
+            onGenerationColumnsChange={handleGenerationColumnsChange}
+            onGenerationRowsChange={handleGenerationRowsChange}
           />
         </section>
 
@@ -2124,8 +2127,6 @@ export default function MainDashboard() {
             referenceGrid={effectiveGrid}
             generationColumns={generationColumns}
             generationRows={generationRows}
-            onGenerationColumnsChange={handleGenerationColumnsChange}
-            onGenerationRowsChange={handleGenerationRowsChange}
             onColumnsChange={setColumns}
             onRowsChange={setRows}
             onAutoSliceChange={setAutoSlice}

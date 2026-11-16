@@ -446,8 +446,6 @@ function FrameView({
  *   autoSlice: boolean,
  *   generationColumns: string,
  *   generationRows: string,
- *   onGenerationColumnsChange: (value: string) => void,
- *   onGenerationRowsChange: (value: string) => void,
  *   onColumnsChange: (value: string) => void,
  *   onRowsChange: (value: string) => void,
  *   onAutoSliceChange: (value: boolean) => void,
@@ -474,8 +472,6 @@ export default function PreviewPanel({
   autoSlice,
   generationColumns,
   generationRows,
-  onGenerationColumnsChange,
-  onGenerationRowsChange,
   onColumnsChange,
   onRowsChange,
   onAutoSliceChange,
@@ -675,64 +671,12 @@ export default function PreviewPanel({
 
       {/* Controle de Grid - aqui no meio, não apaga a imagem ao mudar */}
       <Card
-        title="Frames e Grade"
-        subtitle="Quantidade gerada e recorte da imagem"
+        title="Grade de Recorte"
+        subtitle="Recorta a referência e o resultado"
         icon={Grid3X3}
         bodyClassName="p-3"
       >
         <div className="space-y-3">
-          <div>
-            <p className="mb-1 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
-              Frames a gerar — grade da IA
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label
-                  className={`${labelClass} mb-1`}
-                  htmlFor="generation-columns"
-                >
-                  Colunas
-                </label>
-                <input
-                  id="generation-columns"
-                  type="number"
-                  min={1}
-                  max={64}
-                  value={generationColumns}
-                  onChange={(event) =>
-                    onGenerationColumnsChange(event.target.value)
-                  }
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label
-                  className={`${labelClass} mb-1`}
-                  htmlFor="generation-rows"
-                >
-                  Linhas
-                </label>
-                <input
-                  id="generation-rows"
-                  type="number"
-                  min={1}
-                  max={64}
-                  value={generationRows}
-                  onChange={(event) =>
-                    onGenerationRowsChange(event.target.value)
-                  }
-                  className={inputClass}
-                />
-              </div>
-            </div>
-            <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-              A IA desenha {requestedColumns}×{requestedRows} ={' '}
-              {requestedTotal} frame{requestedTotal === 1 ? '' : 's'}. É
-              independente da grade de recorte: se a detecção falhar (1×1),
-              informe aqui a grade real da folha (ex.: 4×2 = 8 frames).
-            </p>
-          </div>
-
           <div className="rounded-lg border border-cyan-400/15 bg-cyan-400/[0.04] px-2.5 py-2 text-[11px] leading-relaxed text-slate-400">
             A IA gera{' '}
             <strong className="text-cyan-300">
@@ -741,19 +685,10 @@ export default function PreviewPanel({
             na grade{' '}
             <strong className="text-cyan-300">
               {requestedColumns}×{requestedRows}
-            </strong>
-            . A grade de recorte atual é{' '}
-            <strong className="text-cyan-300">
-              {referenceGrid?.columns}×{referenceGrid?.rows}
             </strong>{' '}
-            ({referenceTotal} célula{referenceTotal === 1 ? '' : 's'}).
-            {requestedTotal !== referenceTotal && (
-              <>
-                {' '}
-                Ajuste Colunas/Linhas de recorte se quiser fatiar o resultado
-                nessa grade.
-              </>
-            )}
+            (definida em <strong className="text-slate-300">Frames a Gerar</strong>
+            , à esquerda). Esta grade abaixo serve apenas para recortar a
+            referência e o resultado.
           </div>
 
           <label className="flex cursor-pointer items-center justify-between gap-2">

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import {
   Film,
+  Grid3X3,
   Image as ImageIcon,
   ImagePlus,
   Palette,
@@ -41,6 +42,10 @@ import { Alert, Card, Field, PrimaryButton, inputClass } from './ui'
  *   generateHint: string,
  *   referenceError?: string,
  *   onMultipleFiles?: () => void,
+ *   generationColumns: string,
+ *   generationRows: string,
+ *   onGenerationColumnsChange: (value: string) => void,
+ *   onGenerationRowsChange: (value: string) => void,
  * }} props
  */
 export default function ReferencePanel({
@@ -64,6 +69,10 @@ export default function ReferencePanel({
   generateHint,
   referenceError = '',
   onMultipleFiles,
+  generationColumns,
+  generationRows,
+  onGenerationColumnsChange,
+  onGenerationRowsChange,
 }) {
   const inputRef = useRef(null)
   const styleInputRef = useRef(null)
@@ -71,6 +80,16 @@ export default function ReferencePanel({
   const [dragging, setDragging] = useState(false)
   const [styleDragging, setStyleDragging] = useState(false)
   const [appearanceDragging, setAppearanceDragging] = useState(false)
+
+  const parsedGenerationColumns = Math.max(
+    1,
+    Math.min(64, Number.parseInt(generationColumns, 10) || 1),
+  )
+  const parsedGenerationRows = Math.max(
+    1,
+    Math.min(64, Number.parseInt(generationRows, 10) || 1),
+  )
+  const generationTotal = parsedGenerationColumns * parsedGenerationRows
 
   function openPicker() {
     inputRef.current?.click()
@@ -415,6 +434,61 @@ export default function ReferencePanel({
               </p>
             </div>
           </Field>
+        </div>
+      </Card>
+
+      <Card
+        title="Frames a Gerar"
+        subtitle="Grade que a IA deve desenhar"
+        icon={Grid3X3}
+      >
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label
+                className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-slate-400"
+                htmlFor="generation-columns"
+              >
+                Colunas
+              </label>
+              <input
+                id="generation-columns"
+                type="number"
+                min={1}
+                max={64}
+                value={generationColumns}
+                onChange={(event) =>
+                  onGenerationColumnsChange(event.target.value)
+                }
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label
+                className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-slate-400"
+                htmlFor="generation-rows"
+              >
+                Linhas
+              </label>
+              <input
+                id="generation-rows"
+                type="number"
+                min={1}
+                max={64}
+                value={generationRows}
+                onChange={(event) =>
+                  onGenerationRowsChange(event.target.value)
+                }
+                className={inputClass}
+              />
+            </div>
+          </div>
+          <p className="text-[10px] leading-relaxed text-slate-500">
+            A IA desenha {parsedGenerationColumns}×{parsedGenerationRows} ={' '}
+            <strong className="text-slate-300">{generationTotal} frame(s)</strong>
+            . É independente da grade de recorte: se a detecção falhar, informe
+            aqui a grade real da folha (ex.: 4×2 = 8 frames).
+          </p>
         </div>
       </Card>
 
