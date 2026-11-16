@@ -388,8 +388,10 @@ export default function MainDashboard() {
   const [elapsed, setElapsed] = useState(0)
   const [toasts, setToasts] = useState([])
   const toastId = useRef(0)
-  // Assinatura do último spritesheet salvo no IndexedDB (evita regravar à toa).
-  const savedSheetsSignature = useRef('')
+  // Guarda a última lista de spritesheets já gravada no IndexedDB. Comparar a
+  // referência do array (e não o conteúdo) garante que uma correção individual
+  // — que remonta a folha inteira com o mesmo tamanho de PNG — seja salva.
+  const lastSavedSheetsRef = useRef(null)
   const restoreLocalRef = useRef(false)
 
   const pushToast = useCallback((message, tone = 'info') => {
@@ -458,13 +460,12 @@ export default function MainDashboard() {
 
   // Último resultado gerado: salvo no IndexedDB quando muda. Não é apagado ao
   // iniciar uma geração nova, para não perder o anterior se a chamada falhar.
+  // Depois de uma correção individual, o estado recebe a folha INTEIRA remontada
+  // (novo array), então o que fica salvo é a spritesheet completa, não o frame.
   useEffect(() => {
     if (generatedSheets.length === 0) return
-    const signature = generatedSheets
-      .map((sheet) => `${sheet.length}:${sheet.slice(0, 64)}`)
-      .join('|')
-    if (signature === savedSheetsSignature.current) return
-    savedSheetsSignature.current = signature
+    if (lastSavedSheetsRef.current === generatedSheets) return
+    lastSavedSheetsRef.current = generatedSheets
     void putLocalImages(
       LOCAL_IMAGE_KEYS.generated,
       generatedSheets.map((dataUrl) => ({ dataUrl })),
@@ -512,9 +513,7 @@ export default function MainDashboard() {
         const sheets = generated.map((item) => item.dataUrl).filter(Boolean)
         if (sheets.length > 0) {
           // Evita regravar exatamente o que acabou de ser restaurado.
-          savedSheetsSignature.current = sheets
-            .map((sheet) => `${sheet.length}:${sheet.slice(0, 64)}`)
-            .join('|')
+          lastSavedSheetsRef.current = sheets
           setGeneratedSheets(sheets)
           restored += 1
         }
