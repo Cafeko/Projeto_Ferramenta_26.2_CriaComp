@@ -36,6 +36,7 @@ export const LOCAL_IMAGE_KEYS = {
  *   exportColumns: string,
  *   appearance: string,
  *   artStyle: string,
+ *   frameCount: number | null,
  * } | null}
  */
 export function loadWorkspaceSettings() {
@@ -59,6 +60,9 @@ export function loadWorkspaceSettings() {
         typeof data.exportColumns === 'string' ? data.exportColumns : '4',
       appearance: typeof data.appearance === 'string' ? data.appearance : '',
       artStyle: typeof data.artStyle === 'string' ? data.artStyle : '',
+      frameCount: Number.isFinite(data.frameCount)
+        ? Math.min(64, Math.max(1, Math.round(data.frameCount)))
+        : null,
     }
   } catch {
     return null

@@ -444,6 +444,8 @@ function FrameView({
  *   columns: string,
  *   rows: string,
  *   autoSlice: boolean,
+ *   frameCount: string,
+ *   onFrameCountChange: (value: string) => void,
  *   onColumnsChange: (value: string) => void,
  *   onRowsChange: (value: string) => void,
  *   onAutoSliceChange: (value: boolean) => void,
@@ -468,6 +470,8 @@ export default function PreviewPanel({
   columns,
   rows,
   autoSlice,
+  frameCount,
+  onFrameCountChange,
   onColumnsChange,
   onRowsChange,
   onAutoSliceChange,
@@ -496,6 +500,10 @@ export default function PreviewPanel({
   const referenceTotal = referenceGrid
     ? referenceGrid.total ?? referenceGrid.columns * referenceGrid.rows
     : 0
+  const requestedTotal = Math.max(
+    1,
+    Math.min(64, Number.parseInt(frameCount, 10) || referenceTotal || 1),
+  )
 
   return (
     <div className="space-y-4">
@@ -658,30 +666,55 @@ export default function PreviewPanel({
 
       {/* Controle de Grid - aqui no meio, não apaga a imagem ao mudar */}
       <Card
-        title="Grade de Frames (Grid)"
-        subtitle="Recorta a referência e o resultado"
+        title="Frames e Grade"
+        subtitle="Quantidade gerada e recorte da imagem"
         icon={Grid3X3}
         bodyClassName="p-3"
       >
         <div className="space-y-3">
+          <div>
+            <label className={`${labelClass} mb-1`} htmlFor="frame-count-input">
+              Frames a gerar
+            </label>
+            <input
+              id="frame-count-input"
+              type="number"
+              min={1}
+              max={64}
+              value={frameCount}
+              onChange={(event) => onFrameCountChange(event.target.value)}
+              className={inputClass}
+            />
+            <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+              Quantidade que a IA deve desenhar. É independente da grade de
+              recorte: se a detecção falhar (1×1), informe aqui quantos frames
+              há na referência.
+            </p>
+          </div>
+
           <div className="rounded-lg border border-cyan-400/15 bg-cyan-400/[0.04] px-2.5 py-2 text-[11px] leading-relaxed text-slate-400">
             A IA gera{' '}
             <strong className="text-cyan-300">
-              {referenceTotal} frame{referenceTotal === 1 ? '' : 's'}
-            </strong>{' '}
-            na grade{' '}
+              {requestedTotal} frame{requestedTotal === 1 ? '' : 's'}
+            </strong>
+            . A grade de recorte atual é{' '}
             <strong className="text-cyan-300">
               {referenceGrid?.columns}×{referenceGrid?.rows}
-            </strong>
-            . Ajuste Colunas/Linhas para corrigir a detecção automática — a mesma
-            grade define os frames pedidos à IA e recorta a referência e o
-            resultado.
+            </strong>{' '}
+            ({referenceTotal} célula{referenceTotal === 1 ? '' : 's'}).
+            {requestedTotal !== referenceTotal && (
+              <>
+                {' '}
+                O modelo desenha {requestedTotal} frames; ajuste
+                Colunas/Linhas se quiser recortar nessa grade.
+              </>
+            )}
           </div>
 
           <label className="flex cursor-pointer items-center justify-between gap-2">
             <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
               <Grid3X3 className="size-3.5 text-cyan-400" />
-              Auto-fatiar grid
+              Auto-fatiar grid (exibição)
             </span>
             <input
               type="checkbox"
@@ -737,7 +770,7 @@ export default function PreviewPanel({
             </span>
             {!autoSlice && (
               <span className="text-amber-300 text-[10px]">
-                Grade desativada — imagem única
+                Grade de recorte desativada
               </span>
             )}
           </div>
