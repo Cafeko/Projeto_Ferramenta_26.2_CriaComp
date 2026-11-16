@@ -46,6 +46,7 @@ Artistas & Designers: Para explorar variações visuais e rascunhar movimentaç�
 │   │   ├── MainDashboard.jsx      # Estado global + chamadas de API
 │   │   └── dashboard/             # Cards (BYOK, referência, preview, correção, exportação)
 │   ├── lib/api.js        # Cliente do backend e normalização de erros
+│   ├── lib/localStore.js # Persistência local (localStorage + IndexedDB)
 │   ├── utils/
 │   │   ├── imagePipeline.js       # Recorte, alinhamento, grade e GIF (Canvas)
 │   │   ├── qualityMetrics.js      # Nota de qualidade (pose, consistência, pixel art)
@@ -344,7 +345,25 @@ duas colunas em tablets):
 - **Exportação:** `[ EXPORTAR SPRITESHEET PNG (GRID) ]` e
   `[ EXPORTAR GIF ANIMADO ]`, ambos processados localmente pela Canvas API.
 
-A chave nunca é persistida (nem em `localStorage`): fica só no estado do React.
+### Persistência local (por dispositivo)
+
+Nada de chave, configuração ou imagem é gravado no servidor. O que fica salvo é
+apenas no navegador em uso:
+
+- **`localStorage`** — chave de API por provedor e modelo preferido
+  (`spritetransfer:api-config`), configurações e textos da sessão
+  (`spritetransfer:workspace`) e histórico de métricas
+  (`spritetransfer:usage-history`).
+- **IndexedDB** (`spritetransfer-local`) — imagens de referência de pose, estilo
+  e aparência, além do último spritesheet gerado, guardadas como Blob.
+
+Ao abrir o site, a sessão anterior é restaurada automaticamente (configurações e
+imagens). O escopo é a origem + navegador + perfil: **não** aparece em outro
+dispositivo ou navegador, não é sincronizado e some ao limpar os dados do site.
+O botão **“Limpar imagens salvas neste dispositivo”** (card Privacidade) apaga só
+as imagens do IndexedDB; a tela atual continua até recarregar. Desmarcar “Salvar
+chave neste navegador” mantém a chave só na memória da aba.
+
 Os frames e as referências são normalizados para Data URLs antes de ir ao
 backend, e o cliente bloqueia o envio quando o Base64 passa do limite da Vercel.
 

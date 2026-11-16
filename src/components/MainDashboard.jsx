@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Info,
+  Trash2,
   X,
   XCircle,
 } from 'lucide-react'
@@ -23,6 +24,15 @@ import {
   generateSprites,
   listModels,
 } from '../lib/api'
+import {
+  LOCAL_IMAGE_KEYS,
+  clearLocalImages,
+  deleteLocalImages,
+  getLocalImages,
+  loadWorkspaceSettings,
+  putLocalImages,
+  saveWorkspaceSettings,
+} from '../lib/localStore'
 import {
   compileSpritesheetGrid,
   detectSpriteGrid,
@@ -234,6 +244,9 @@ function loadUsageHistory() {
 export default function MainDashboard() {
   /* ------------------------------- BYOK ---------------------------------- */
   const [initialApiConfig] = useState(loadSavedApiConfig)
+  // Configurações e textos da última sessão (localStorage). As imagens são
+  // restauradas em seguida, de forma assíncrona, do IndexedDB.
+  const [initialWorkspace] = useState(loadWorkspaceSettings)
   const [provider, setProvider] = useState(initialApiConfig.provider)
   const [rememberKey, setRememberKey] = useState(initialApiConfig.rememberKey)
   const [savedKeys, setSavedKeys] = useState(initialApiConfig.keysByProvider)
@@ -279,9 +292,11 @@ export default function MainDashboard() {
   // da verdade: definem o recorte da referência, o recorte do resultado e a
   // quantidade de frames pedida à IA. A detecção automática apenas preenche
   // esses campos ao carregar a imagem.
-  const [columns, setColumns] = useState('1')
-  const [rows, setRows] = useState('1')
-  const [autoSlice, setAutoSlice] = useState(false)
+  const [columns, setColumns] = useState(() => initialWorkspace?.columns ?? '1')
+  const [rows, setRows] = useState(() => initialWorkspace?.rows ?? '1')
+  const [autoSlice, setAutoSlice] = useState(
+    () => initialWorkspace?.autoSlice ?? false,
+  )
   const [referenceFrames, setReferenceFrames] = useState([])
   const [referenceBusy, setReferenceBusy] = useState(false)
   const [referenceError, setReferenceError] = useState('')
@@ -307,8 +322,12 @@ export default function MainDashboard() {
   const [appearanceReference, setAppearanceReference] = useState(null)
 
   /* ----------------------------- Prompts -------------------------------- */
-  const [appearance, setAppearance] = useState('')
-  const [artStyle, setArtStyle] = useState('')
+  const [appearance, setAppearance] = useState(
+    () => initialWorkspace?.appearance ?? '',
+  )
+  const [artStyle, setArtStyle] = useState(
+    () => initialWorkspace?.artStyle ?? '',
+  )
 
   /* --------------------------- Geração ---------------------------------- */
   // Spritesheets brutos devolvidos pela IA (sem fatiar). Ficam guardados para
@@ -322,8 +341,10 @@ export default function MainDashboard() {
 
   /* ----------------------------- Player --------------------------------- */
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0)
-  const [viewMode, setViewMode] = useState('loop') // 'loop' | 'frame-by-frame'
-  const [fps, setFps] = useState(8)
+  const [viewMode, setViewMode] = useState(
+    () => initialWorkspace?.viewMode ?? 'loop',
+  ) // 'loop' | 'frame-by-frame'
+  const [fps, setFps] = useState(() => initialWorkspace?.fps ?? 8)
 
   /* --------------------------- Correção --------------------------------- */
   const [correctionPrompt, setCorrectionPrompt] = useState('')
@@ -332,7 +353,9 @@ export default function MainDashboard() {
   const [correctionError, setCorrectionError] = useState('')
 
   /* --------------------------- Exportação ------------------------------- */
-  const [exportColumns, setExportColumns] = useState('4')
+  const [exportColumns, setExportColumns] = useState(
+    () => initialWorkspace?.exportColumns ?? '4',
+  )
   const [exporting, setExporting] = useState(null)
 
   /* --------------------------- Modal de Edição -------------------------- */
@@ -365,6 +388,9 @@ export default function MainDashboard() {
   const [elapsed, setElapsed] = useState(0)
   const [toasts, setToasts] = useState([])
   const toastId = useRef(0)
+  // Assinatura do último spritesheet salvo no IndexedDB (evita regravar à toa).
+  const savedSheetsSignature = useRef('')
+  const restoreLocalRef = useRef(false)
 
   const pushToast = useCallback((message, tone = 'info') => {
     const id = toastId.current + 1
@@ -404,6 +430,112 @@ export default function MainDashboard() {
   )
 
   const handleResetUsage = useCallback(() => setUsageHistory([]), [])
+
+  /* ---------------- Persistência local (só neste dispositivo) ----------- */
+  // Configurações e textos: pequenos, vão para o localStorage a cada mudança.
+  // Não inclui chave de API (tem fluxo próprio em api-config).
+  useEffect(() => {
+    saveWorkspaceSettings({
+      columns,
+      rows,
+      autoSlice,
+      fps,
+      viewMode,
+      exportColumns,
+      appearance,
+      artStyle,
+    })
+  }, [
+    columns,
+    rows,
+    autoSlice,
+    fps,
+    viewMode,
+    exportColumns,
+    appearance,
+    artStyle,
+  ])
+
+  // Último resultado gerado: salvo no IndexedDB quando muda. Não é apagado ao
+  // iniciar uma geração nova, para não perder o anterior se a chamada falhar.
+  useEffect(() => {
+    if (generatedSheets.length === 0) return
+    const signature = generatedSheets
+      .map((sheet) => `${sheet.length}:${sheet.slice(0, 64)}`)
+      .join('|')
+    if (signature === savedSheetsSignature.current) return
+    savedSheetsSignature.current = signature
+    void putLocalImages(
+      LOCAL_IMAGE_KEYS.generated,
+      generatedSheets.map((dataUrl) => ({ dataUrl })),
+    )
+  }, [generatedSheets])
+
+  // Restaura, uma única vez ao abrir, as imagens salvas neste navegador.
+  useEffect(() => {
+    if (restoreLocalRef.current) return
+    restoreLocalRef.current = true
+
+    ;(async () => {
+      try {
+        const [pose, style, appearanceImage, generated] = await Promise.all([
+          getLocalImages(LOCAL_IMAGE_KEYS.pose),
+          getLocalImages(LOCAL_IMAGE_KEYS.style),
+          getLocalImages(LOCAL_IMAGE_KEYS.appearance),
+          getLocalImages(LOCAL_IMAGE_KEYS.generated),
+        ])
+
+        let restored = 0
+        if (pose[0]?.dataUrl) {
+          setReference({
+            ...(pose[0].meta || {}),
+            dataUrl: pose[0].dataUrl,
+            kind: pose[0].meta?.kind || 'file',
+          })
+          restored += 1
+        }
+        if (style[0]?.dataUrl) {
+          setStyleReference({
+            ...(style[0].meta || {}),
+            dataUrl: style[0].dataUrl,
+          })
+          restored += 1
+        }
+        if (appearanceImage[0]?.dataUrl) {
+          setAppearanceReference({
+            ...(appearanceImage[0].meta || {}),
+            dataUrl: appearanceImage[0].dataUrl,
+          })
+          restored += 1
+        }
+
+        const sheets = generated.map((item) => item.dataUrl).filter(Boolean)
+        if (sheets.length > 0) {
+          // Evita regravar exatamente o que acabou de ser restaurado.
+          savedSheetsSignature.current = sheets
+            .map((sheet) => `${sheet.length}:${sheet.slice(0, 64)}`)
+            .join('|')
+          setGeneratedSheets(sheets)
+          restored += 1
+        }
+
+        if (restored > 0) {
+          pushToast('Sessão anterior restaurada deste dispositivo.', 'info')
+        }
+      } catch (error) {
+        console.warn('[restore-local]', error)
+      }
+    })()
+  }, [pushToast])
+
+  const handleClearLocalImages = useCallback(async () => {
+    await clearLocalImages()
+    pushToast(
+      'Imagens salvas neste dispositivo foram apagadas. A tela atual continua ' +
+        'até você recarregar ou gerar novamente.',
+      'info',
+    )
+  }, [pushToast])
 
   /* ------------------------ Métrica de qualidade ------------------------ */
   // Avaliada no navegador sempre que os frames exibidos mudam (geração,
@@ -840,6 +972,19 @@ export default function MainDashboard() {
           size: file.size,
           kind: 'file',
         })
+        // Mantém a referência salva neste navegador para a próxima visita.
+        void putLocalImages(LOCAL_IMAGE_KEYS.pose, [
+          {
+            dataUrl: image.dataUrl,
+            meta: {
+              width: image.width,
+              height: image.height,
+              name: file.name,
+              size: file.size,
+              kind: 'file',
+            },
+          },
+        ])
         setColumns(String(detected.columns))
         setRows(String(detected.rows))
         setAutoSlice(total > 1)
@@ -879,6 +1024,7 @@ export default function MainDashboard() {
     setRows('1')
     setAutoSlice(false)
     setReferenceError('')
+    void deleteLocalImages(LOCAL_IMAGE_KEYS.pose)
   }, [])
 
   const handleStyleFileSelected = useCallback(
@@ -891,6 +1037,16 @@ export default function MainDashboard() {
           height: image.height,
           name: file.name,
         })
+        void putLocalImages(LOCAL_IMAGE_KEYS.style, [
+          {
+            dataUrl: image.dataUrl,
+            meta: {
+              width: image.width,
+              height: image.height,
+              name: file.name,
+            },
+          },
+        ])
         pushToast('Imagem de referência de estilo carregada.', 'success')
       } catch (error) {
         pushToast(describeApiError(error), 'error')
@@ -901,6 +1057,7 @@ export default function MainDashboard() {
 
   const handleClearStyleReference = useCallback(() => {
     setStyleReference(null)
+    void deleteLocalImages(LOCAL_IMAGE_KEYS.style)
   }, [])
 
   const handleAppearanceFileSelected = useCallback(
@@ -913,6 +1070,16 @@ export default function MainDashboard() {
           height: image.height,
           name: file.name,
         })
+        void putLocalImages(LOCAL_IMAGE_KEYS.appearance, [
+          {
+            dataUrl: image.dataUrl,
+            meta: {
+              width: image.width,
+              height: image.height,
+              name: file.name,
+            },
+          },
+        ])
         pushToast('Imagem de referência de aparência carregada.', 'success')
       } catch (error) {
         pushToast(describeApiError(error), 'error')
@@ -923,6 +1090,7 @@ export default function MainDashboard() {
 
   const handleClearAppearanceReference = useCallback(() => {
     setAppearanceReference(null)
+    void deleteLocalImages(LOCAL_IMAGE_KEYS.appearance)
   }, [])
 
   const canGenerate = Boolean(
@@ -1707,12 +1875,26 @@ export default function MainDashboard() {
               Privacidade
             </p>
             <p className="mt-1.5">
-              Por padrão, sua chave é lembrada apenas localmente no seu navegador
-              (localStorage); desmarque a opção acima se quiser mantê-la só na
-              memória desta aba. Ela nunca é gravada no servidor, e o recorte, o
-              alinhamento, a spritesheet e o GIF são processados localmente via
-              Canvas API.
+              Sua chave, as configurações e as imagens (referências e último
+              resultado) ficam apenas neste dispositivo — no <code>localStorage</code>{' '}
+              e no <code>IndexedDB</code> do navegador. Elas não são gravadas no
+              servidor e não aparecem em outro dispositivo ou navegador. Para
+              manter a chave só na memória desta aba, desmarque “Salvar chave
+              neste navegador”. O recorte, o alinhamento, a spritesheet e o GIF
+              são processados localmente via Canvas API.
             </p>
+            <p className="mt-1.5">
+              Ao abrir o site, a última sessão é restaurada automaticamente. Se
+              quiser que as imagens não voltem, apague-as deste dispositivo:
+            </p>
+            <button
+              type="button"
+              onClick={handleClearLocalImages}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2 py-1 text-[10px] font-semibold text-slate-400 transition hover:border-rose-400/30 hover:bg-rose-400/5 hover:text-rose-300"
+            >
+              <Trash2 className="size-3" />
+              Limpar imagens salvas neste dispositivo
+            </button>
             <p className="mt-1.5 font-mono text-slate-600">
               pipeline 100% client-side · sem upload de frames
             </p>
