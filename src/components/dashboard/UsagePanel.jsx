@@ -1,4 +1,4 @@
-import { Clock, Coins, Gauge, RotateCcw } from 'lucide-react'
+import { Clock, Coins, Gauge, Hash, RotateCcw } from 'lucide-react'
 
 import { formatDuration, formatUsd } from '../../lib/api'
 import { Card, Pill } from './ui'
@@ -55,7 +55,12 @@ export default function UsagePanel({ history, onReset }) {
     (acc, entry) => {
       acc.calls += 1
       acc.timeMs += entry.usage.clientElapsedMs
-      acc.tokens += entry.usage.totalTokens ?? 0
+      acc.inputTokens += entry.usage.inputTokens ?? 0
+      acc.outputTokens += entry.usage.outputTokens ?? 0
+      if (typeof entry.usage.totalTokens === 'number') {
+        acc.tokens += entry.usage.totalTokens
+        acc.tokenCalls += 1
+      }
       if (entry.usage.costUsd !== null) {
         acc.cost += entry.usage.costUsd
         if (entry.usage.costSource === 'estimate') acc.estimated += 1
@@ -64,13 +69,23 @@ export default function UsagePanel({ history, onReset }) {
       }
       return acc
     },
-    { calls: 0, timeMs: 0, tokens: 0, cost: 0, estimated: 0, uncosted: 0 },
+    {
+      calls: 0,
+      timeMs: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      tokens: 0,
+      tokenCalls: 0,
+      cost: 0,
+      estimated: 0,
+      uncosted: 0,
+    },
   )
 
   return (
     <Card
-      title="Métricas e custo"
-      subtitle="Tempo e gasto de cada chamada à IA"
+      title="Uso e custo da IA"
+      subtitle="Tokens usados, custo e tempo por chamada"
       icon={Gauge}
       badge={
         history.length > 0 && (
@@ -88,8 +103,8 @@ export default function UsagePanel({ history, onReset }) {
     >
       {!last ? (
         <p className="text-[11px] leading-relaxed text-slate-500">
-          Gere ou corrija frames para ver o tempo, os tokens e o custo de cada
-          chamada. O total acumulado fica salvo neste navegador.
+          Gere ou corrija frames para ver os tokens usados, o custo e o tempo.
+          O total acumulado fica salvo neste navegador.
         </p>
       ) : (
         <div className="space-y-3">
@@ -116,13 +131,25 @@ export default function UsagePanel({ history, onReset }) {
                 }
               />
               <Metric
+                icon={Hash}
+                label="Tokens usados"
+                value={formatTokens(last.usage.totalTokens)}
+                hint={
+                  last.usage.totalTokens !== null
+                    ? `${formatTokens(last.usage.inputTokens)} entrada · ${formatTokens(last.usage.outputTokens)} saída`
+                    : `${last.usage.imageCount} imagem(ns) · tokens não informados`
+                }
+              />
+              <Metric
                 icon={Coins}
                 label="Custo"
                 value={formatUsd(last.usage.costUsd)}
                 hint={
-                  last.usage.totalTokens !== null
-                    ? `${formatTokens(last.usage.inputTokens)} in · ${formatTokens(last.usage.outputTokens)} out`
-                    : `${last.usage.imageCount} imagem(ns)`
+                  last.usage.costSource === 'estimate'
+                    ? 'Estimativa baseada nos preços do modelo'
+                    : last.usage.costSource === 'provider'
+                      ? 'Valor informado pelo provedor'
+                      : 'Custo não informado pelo provedor'
                 }
               />
             </div>
@@ -148,10 +175,20 @@ export default function UsagePanel({ history, onReset }) {
                 hint={`${totals.calls} chamada${totals.calls === 1 ? '' : 's'}`}
               />
               <Metric
+                icon={Hash}
+                label="Tokens usados"
+                value={totals.tokenCalls > 0 ? formatTokens(totals.tokens) : '—'}
+                hint={
+                  totals.tokenCalls > 0
+                    ? `${formatTokens(totals.inputTokens)} entrada · ${formatTokens(totals.outputTokens)} saída`
+                    : 'Provedor não informou tokens'
+                }
+              />
+              <Metric
                 icon={Clock}
                 label="Tempo total"
                 value={formatDuration(totals.timeMs)}
-                hint={`${formatTokens(totals.tokens)} tokens`}
+                hint={`${totals.calls} chamada${totals.calls === 1 ? '' : 's'}`}
               />
             </div>
             {(totals.estimated > 0 || totals.uncosted > 0) && (
