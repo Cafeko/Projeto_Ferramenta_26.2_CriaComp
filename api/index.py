@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
+import math
 import os
 import time
 from dataclasses import dataclass
@@ -2411,6 +2412,105 @@ def _replicate_set_supported(
     inputs[name] = value
 
 
+# Proporções aceitas pela maioria dos modelos quando o schema não informa a
+# lista completa. Nunca inclui valores exóticos como "21:9", que alguns modelos
+# (por exemplo openai/gpt-image-2) rejeitam com erro 422.
+_COMMON_ASPECTS = (
+    "1:1",
+    "4:3",
+    "3:4",
+    "3:2",
+    "2:3",
+    "16:9",
+    "9:16",
+)
+
+
+def _replicate_enum_values(spec: Any) -> list[str]:
+    """Valores permitidos de um campo, mesmo quando vêm em allOf/anyOf."""
+    found: list[str] = []
+
+    def walk(node: Any) -> None:
+        if not isinstance(node, dict):
+            return
+        enum = node.get("enum")
+        if isinstance(enum, list):
+            for item in enum:
+                if isinstance(item, str) and item not in found:
+                    found.append(item)
+        for key in ("allOf", "anyOf", "oneOf"):
+            children = node.get(key)
+            if isinstance(children, list):
+                for child in children:
+                    walk(child)
+        items = node.get("items")
+        if isinstance(items, dict):
+            walk(items)
+
+    walk(spec)
+    return found
+
+
+def _aspect_value_ratio(value: str) -> float | None:
+    """Converte "16:9" ou "1536x1024" em um número (largura / altura)."""
+    text = str(value).strip().lower().replace("×", "x")
+    if ":" in text:
+        left, _, right = text.partition(":")
+    elif "x" in text:
+        left, _, right = text.partition("x")
+    else:
+        return None
+    try:
+        width = float(left)
+        height = float(right)
+    except (TypeError, ValueError):
+        return None
+    if width <= 0 or height <= 0:
+        return None
+    return width / height
+
+
+def _replicate_best_aspect(spec: Any, target: str) -> str | None:
+    """Escolhe a proporção aceita pelo modelo mais próxima da grade pedida.
+
+    Preferência: valor exato da grade → "match_input_image" → "auto" → a
+    proporção numérica mais próxima. Só devolve valores que o modelo declara
+    aceitar; se o schema não trouxer nenhuma lista, usa um conjunto conservador.
+    """
+    allowed = _replicate_enum_values(spec) if spec is not None else []
+    if not allowed:
+        allowed = list(_COMMON_ASPECTS)
+    if target in allowed:
+        return target
+
+    # Sem uma proporção exata, a melhor pista é a própria imagem de referência
+    # (a folha enviada tem exatamente a proporção da grade).
+    for preferred in ("match_input_image", "auto"):
+        if preferred in allowed:
+            return preferred
+
+    wanted = _aspect_value_ratio(target) or 1.0
+    best: tuple[float, str] | None = None
+    for candidate in allowed:
+        ratio = _aspect_value_ratio(candidate)
+        if ratio is None:
+            continue
+        distance = abs(math.log(ratio / wanted))
+        if best is None or distance < best[0]:
+            best = (distance, candidate)
+    if best is not None:
+        return best[1]
+    return allowed[0] if allowed else None
+
+
+def _replicate_target_aspect(plan: PromptPlan) -> str:
+    """Proporção exata da grade de saída (colunas × linhas, reduzida)."""
+    columns = max(1, plan.grid_columns or plan.frame_count)
+    rows = max(1, plan.grid_rows or 1)
+    divisor = math.gcd(columns, rows) or 1
+    return f"{columns // divisor}:{rows // divisor}"
+
+
 def _replicate_build_input(
     schema: dict[str, Any], plan: PromptPlan
 ) -> dict[str, Any]:
@@ -2540,7 +2640,11 @@ def _replicate_build_input(
             )
 
     _replicate_set_supported(inputs, props, "output_format", "png")
-    _replicate_set_supported(inputs, props, "aspect_ratio", plan.aspect)
+    aspect = _replicate_best_aspect(
+        props.get("aspect_ratio"), _replicate_target_aspect(plan)
+    )
+    if aspect:
+        _replicate_set_supported(inputs, props, "aspect_ratio", aspect)
     _replicate_set_supported(inputs, props, "num_outputs", 1)
     _replicate_set_supported(inputs, props, "num_images", 1)
     return inputs
@@ -2734,22 +2838,42 @@ class ReplicateAdapter(ProviderAdapter):
         headers["Prefer"] = "wait=60"
         headers["Cancel-After"] = "240s"
 
-        if resolved_version:
-            prediction = _request_json(
-                "POST",
-                f"{REPLICATE_API}/predictions",
-                provider=self.provider,
-                headers=headers,
-                json_body={"version": resolved_version, "input": inputs},
-            )
-        else:
-            prediction = _request_json(
+        def create_prediction(body_inputs: dict[str, Any]) -> Any:
+            if resolved_version:
+                return _request_json(
+                    "POST",
+                    f"{REPLICATE_API}/predictions",
+                    provider=self.provider,
+                    headers=headers,
+                    json_body={"version": resolved_version, "input": body_inputs},
+                )
+            return _request_json(
                 "POST",
                 f"{REPLICATE_API}/models/{owner}/{name}/predictions",
                 provider=self.provider,
                 headers=headers,
-                json_body={"input": inputs},
+                json_body={"input": body_inputs},
             )
+
+        try:
+            prediction = create_prediction(inputs)
+        except ApiError as exc:
+            # Rede de segurança: se o modelo recusar apenas a proporção pedida,
+            # repete uma vez sem `aspect_ratio` em vez de falhar a geração.
+            rejection = f"{exc.details or ''} {exc.message or ''}".lower()
+            if (
+                exc.code == "invalid_request"
+                and "aspect_ratio" in rejection
+                and "aspect_ratio" in inputs
+            ):
+                retry_inputs = {
+                    key: value
+                    for key, value in inputs.items()
+                    if key != "aspect_ratio"
+                }
+                prediction = create_prediction(retry_inputs)
+            else:
+                raise
 
         if not isinstance(prediction, dict):
             raise ApiError(

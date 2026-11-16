@@ -149,6 +149,13 @@ Valida a chave e devolve os modelos de imagem/visão disponíveis. Quando o
 provedor não permite uma listagem simples (caso do Replicate), a resposta traz
 uma lista segura de modelos recomendados e `source: "fallback"`.
 
+No Replicate, o `aspect_ratio` é derivado da grade de saída: se o modelo declara
+a proporção exata, ela é usada; caso contrário, o backend prefere
+`match_input_image`/`auto` (para preservar a proporção da folha de referência) e
+nunca envia um valor fora da lista aceita pelo modelo — por exemplo, `21:9` em
+modelos que só chegam a `16:9`. Se mesmo assim o provedor recusar apenas a
+proporção, a requisição é repetida uma vez sem esse campo.
+
 ```json
 {
   "provider": "gemini",
