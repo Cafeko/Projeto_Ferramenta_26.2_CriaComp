@@ -62,9 +62,30 @@ function useWheelZoom(ref, onStep, enabled = true) {
  *   loading: boolean,
  *   loadingLabel: string,
  *   emptyLabel: string,
+ *   viewMode: 'loop' | 'frame-by-frame',
+ *   onViewModeChange: (value: 'loop' | 'frame-by-frame') => void,
+ *   fps: number,
+ *   onFpsChange: (value: number) => void,
+ *   onPrev: () => void,
+ *   onNext: () => void,
  * }} props
  */
-function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loadingLabel, emptyLabel }) {
+function FrameView({
+  label,
+  accent,
+  frame,
+  frameIndex,
+  totalFrames,
+  loading,
+  loadingLabel,
+  emptyLabel,
+  viewMode,
+  onViewModeChange,
+  fps,
+  onFpsChange,
+  onPrev,
+  onNext,
+}) {
   const accentUi =
     accent === 'cyan'
       ? 'border-cyan-400/25 bg-cyan-400/[0.04]'
@@ -82,6 +103,9 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
   const fullscreenRef = useRef(null)
   const lastSizeRef = useRef('')
   const hasFrame = Boolean(frame)
+  // Mantém os callbacks de navegação atuais sem reanexar o listener de teclado.
+  const navRef = useRef({ onPrev, onNext })
+  navRef.current = { onPrev, onNext }
 
   const resetView = () => {
     setZoom(1)
@@ -159,7 +183,14 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') setExpanded(false)
+      if (event.key === 'Escape') {
+        setExpanded(false)
+        return
+      }
+      const tag = event.target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (event.key === 'ArrowLeft') navRef.current.onPrev?.()
+      else if (event.key === 'ArrowRight') navRef.current.onNext?.()
       else if (event.key === '+' || event.key === '=') zoomBy(1.25)
       else if (event.key === '-') zoomBy(1 / 1.25)
       else if (event.key === '0') resetView()
@@ -325,9 +356,69 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
 
             {viewer(fullscreenRef, true)}
 
-            <p className="mt-2 text-center text-[10px] text-slate-500">
-              Arraste para mover · roda do mouse ou +/− para zoom · duplo
-              clique/0 para redefinir · Esc para sair
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => navRef.current.onPrev?.()}
+                disabled={safeTotal === 0}
+                className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/40 px-2 py-1 text-[10px] font-semibold text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronLeft className="size-3.5" />
+                Anterior
+              </button>
+              <button
+                type="button"
+                onClick={() => navRef.current.onNext?.()}
+                disabled={safeTotal === 0}
+                className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-black/40 px-2 py-1 text-[10px] font-semibold text-slate-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Próximo
+                <ChevronRight className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  onViewModeChange?.(
+                    viewMode === 'loop' ? 'frame-by-frame' : 'loop',
+                  )
+                }
+                className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-semibold transition ${
+                  viewMode === 'loop'
+                    ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
+                    : 'border-white/10 bg-black/40 text-slate-300 hover:bg-white/10'
+                }`}
+              >
+                {viewMode === 'loop' ? (
+                  <RefreshCw className="size-3.5" />
+                ) : (
+                  <Square className="size-3.5" />
+                )}
+                {viewMode === 'loop' ? 'Loop' : 'Frame a frame'}
+              </button>
+              {viewMode === 'loop' && (
+                <label className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-slate-400">
+                  FPS
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={fps}
+                    aria-label="Quadros por segundo"
+                    onChange={(event) => {
+                      const value = Number.parseInt(event.target.value, 10)
+                      if (Number.isFinite(value)) {
+                        onFpsChange?.(Math.min(60, Math.max(1, value)))
+                      }
+                    }}
+                    className="w-14 rounded-md border border-white/10 bg-black/40 px-1.5 py-1 font-mono text-[10px] text-slate-100 focus:border-cyan-400/60 focus:outline-none"
+                  />
+                </label>
+              )}
+            </div>
+
+            <p className="mt-1.5 text-center text-[10px] text-slate-600">
+              Arraste para mover · ←/→ troca de frame · +/− zoom · duplo
+              clique/0 redefine · Esc sai
             </p>
           </div>,
           document.body,
@@ -394,6 +485,16 @@ export default function PreviewPanel({
   const hasFrames = gens.length > 0
   const hasReference = refs.length > 0
 
+  // Navegação circular: do último vai para o primeiro e vice-versa.
+  const goPrev = () => {
+    if (totalFrames === 0) return
+    onCurrentFrameIndexChange((safeIndex - 1 + totalFrames) % totalFrames)
+  }
+  const goNext = () => {
+    if (totalFrames === 0) return
+    onCurrentFrameIndexChange((safeIndex + 1) % totalFrames)
+  }
+
   // Os frames já chegam fatiados do MainDashboard. A grade é recalculada lá
   // a partir do spritesheet bruto, então trocar colunas/linhas não apaga nada.
   const displayFrames = gens
@@ -424,8 +525,8 @@ export default function PreviewPanel({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => onCurrentFrameIndexChange(Math.max(0, safeIndex - 1))}
-              disabled={safeIndex === 0 || totalFrames === 0}
+              onClick={goPrev}
+              disabled={totalFrames === 0}
               className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-semibold text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronLeft className="size-4" />
@@ -433,8 +534,8 @@ export default function PreviewPanel({
             </button>
             <button
               type="button"
-              onClick={() => onCurrentFrameIndexChange(Math.min(totalFrames - 1, safeIndex + 1))}
-              disabled={safeIndex >= totalFrames - 1 || totalFrames === 0}
+              onClick={goNext}
+              disabled={totalFrames === 0}
               className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] font-semibold text-slate-300 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Próximo
@@ -449,6 +550,7 @@ export default function PreviewPanel({
               min={1}
               max={safeTotal}
               value={safeIndex + 1}
+              aria-label="Quadro atual"
               onChange={(event) => {
                 const v = Number.parseInt(event.target.value, 10)
                 if (!Number.isNaN(v) && v >= 1 && v <= safeTotal) {
@@ -460,7 +562,7 @@ export default function PreviewPanel({
             <span className="text-[11px] text-slate-500">de {safeTotal}</span>
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => onViewModeChange((v) => (v === 'loop' ? 'frame-by-frame' : 'loop'))}
@@ -473,6 +575,26 @@ export default function PreviewPanel({
               {viewMode === 'loop' ? <RefreshCw className="size-3.5" /> : <Square className="size-3.5" />}
               {viewMode === 'loop' ? 'Loop' : 'Frame a frame'}
             </button>
+
+            {viewMode === 'loop' && (
+              <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-400">
+                <span className="uppercase">FPS</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={60}
+                  value={fps}
+                  onChange={(event) => {
+                    const value = Number.parseInt(event.target.value, 10)
+                    if (Number.isFinite(value)) {
+                      onFpsChange(Math.min(60, Math.max(1, value)))
+                    }
+                  }}
+                  aria-label="Quadros por segundo"
+                  className="w-14 rounded-lg border border-white/10 bg-black/30 px-2 py-1 font-mono text-[11px] text-slate-100 focus:border-cyan-400/60 focus:outline-none"
+                />
+              </label>
+            )}
           </div>
         </div>
 
@@ -487,6 +609,12 @@ export default function PreviewPanel({
             loading={referenceBusy}
             loadingLabel="Processando referência…"
             emptyLabel="Nenhuma referência de movimento."
+            viewMode={viewMode}
+            onViewModeChange={onViewModeChange}
+            fps={fps}
+            onFpsChange={onFpsChange}
+            onPrev={goPrev}
+            onNext={goNext}
           />
           <FrameView
             label="Novo frame"
@@ -497,6 +625,12 @@ export default function PreviewPanel({
             loading={generating || slicing}
             loadingLabel={slicing ? 'Aplicando grade…' : 'Gerando frame…'}
             emptyLabel="Gere um spritesheet para ver o resultado aqui."
+            viewMode={viewMode}
+            onViewModeChange={onViewModeChange}
+            fps={fps}
+            onFpsChange={onFpsChange}
+            onPrev={goPrev}
+            onNext={goNext}
           />
         </div>
 

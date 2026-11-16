@@ -797,7 +797,7 @@ export default function MainDashboard() {
   /* --------------------------- Playback --------------------------------- */
   useEffect(() => {
     if (viewMode !== 'loop') return undefined
-    const interval = Math.max(40, Math.round(1000 / Math.max(1, fps)))
+    const interval = Math.max(16, Math.round(1000 / Math.max(1, fps)))
     const id = window.setInterval(() => {
       const total = Math.max(referenceFrames.length, frames.length)
       if (total === 0) return
