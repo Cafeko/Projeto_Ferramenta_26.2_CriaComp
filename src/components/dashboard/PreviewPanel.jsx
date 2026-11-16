@@ -182,7 +182,9 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
   const controls = (fullscreen = false) => (
     <div
       className={`flex items-center gap-0.5 rounded-md border border-white/10 bg-black/70 px-0.5 py-0.5 text-slate-300 backdrop-blur ${
-        fullscreen ? '' : 'absolute top-1.5 right-1.5 z-10'
+        fullscreen
+          ? ''
+          : 'pointer-events-none absolute top-1.5 right-1.5 z-10 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100'
       }`}
       onPointerDown={(event) => event.stopPropagation()}
       onDoubleClick={(event) => event.stopPropagation()}
@@ -232,7 +234,7 @@ function FrameView({ label, accent, frame, frameIndex, totalFrames, loading, loa
     <div
       ref={ref}
       data-frame-viewer={fullscreen ? 'fullscreen' : 'inline'}
-      className={`bg-checkerboard relative overflow-hidden border border-white/5 ${
+      className={`group bg-checkerboard relative overflow-hidden border border-white/5 ${
         fullscreen
           ? 'min-h-0 flex-1 rounded-xl border-white/10'
           : 'h-64 rounded-lg sm:h-72'
