@@ -444,17 +444,30 @@ navegador em `spritetransfer:settings`):
 
 ### Modo editor
 
-Ao escolher **Modo editor** em Configurações, o gerador dá lugar a uma tela
-mínima de edição:
+Ao escolher **Modo editor** em Configurações, o topo do gerador vira uma tela
+mínima de edição; abaixo dela, a mesma pipeline do modo avançado continua
+disponível:
 
 - **Imagem para editar:** envie qualquer imagem (frame, sprite ou arte) por
   arrastar/soltar ou clique. Ela é a fonte de verdade da edição.
 - **Instrução de edição:** descreva apenas o que deve mudar. O botão
-  `[ APLICAR EDIÇÃO ]` envia a imagem + a instrução como correção de um único
-  frame (sem referência de movimento e sem grade).
-- **Original / Novo frame:** o resultado aparece como **novo frame**, com
-  **Baixar PNG**, **Usar como base** (encadeia outra edição a partir do
-  resultado) e **Limpar resultado**.
+  `[ APLICAR EDIÇÃO ]` envia a imagem + a instrução como correção de uma única
+  imagem (sem referência de movimento e sem grade).
+- **Resultado como novo spritesheet:** ao terminar, o resultado entra na
+  **Visualização dos frames**, na **Grade de Recorte** e no **Animation
+  Frames**. A grade é detectada automaticamente; ajuste Colunas/Linhas se
+  precisar dividir os frames de outro jeito.
+- **Frame a frame ou animação:** escolha o modo, navegue com Anterior/Próximo e
+  ajuste o FPS como no modo avançado.
+- **Correção por frame ou em lote:** use `[ Editar ]` em cada frame ou a
+  **Correção em Lote** para refinar o resultado.
+- **Exportação:** `[ EXPORTAR SPRITESHEET PNG (GRID) ]` e
+  `[ EXPORTAR GIF ANIMADO ]`.
+- **Usar o resultado atual como base:** encadeia outra edição a partir do
+  resultado (a imagem editada vira a nova entrada).
+- **Métricas:** o painel do rodapé aparece em todos os modos e registra a edição
+  como imagem mais recente; só some se **Mostrar métricas no final** estiver
+  desligado.
 - O modo editor usa a mesma configuração de API e grava os logs como tipo
   **Edição**. A imagem enviada e o resultado também entram na sessão salva.
 

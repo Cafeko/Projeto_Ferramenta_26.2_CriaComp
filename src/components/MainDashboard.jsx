@@ -442,7 +442,6 @@ export default function MainDashboard({
 
   /* ----------------------------- Editor --------------------------------- */
   const [editorSource, setEditorSource] = useState(null)
-  const [editorResult, setEditorResult] = useState(null)
   const [editorPrompt, setEditorPrompt] = useState(
     () => initialWorkspace?.editorPrompt ?? '',
   )
@@ -733,15 +732,6 @@ export default function MainDashboard({
     })
   }, [editorSource, saveSession, warnLocalSaveFailure])
 
-  useEffect(() => {
-    if (!saveSession || !editorResult) return
-    void putLocalImages(LOCAL_IMAGE_KEYS.editorResult, [
-      { dataUrl: editorResult },
-    ]).then((ok) => {
-      if (!ok) warnLocalSaveFailure('salvar o resultado do editor')
-    })
-  }, [editorResult, saveSession, warnLocalSaveFailure])
-
   // Restaura, uma única vez ao abrir, as imagens salvas neste navegador.
   useEffect(() => {
     if (restoreLocalRef.current) return
@@ -751,14 +741,13 @@ export default function MainDashboard({
 
     ;(async () => {
       try {
-        const [pose, style, appearanceImage, generated, editorInput, editorOutput] =
+        const [pose, style, appearanceImage, generated, editorInput] =
           await Promise.all([
             getLocalImages(LOCAL_IMAGE_KEYS.pose),
             getLocalImages(LOCAL_IMAGE_KEYS.style),
             getLocalImages(LOCAL_IMAGE_KEYS.appearance),
             getLocalImages(LOCAL_IMAGE_KEYS.generated),
             getLocalImages(LOCAL_IMAGE_KEYS.editorSource),
-            getLocalImages(LOCAL_IMAGE_KEYS.editorResult),
           ])
 
         let restored = 0
@@ -798,10 +787,6 @@ export default function MainDashboard({
             dataUrl: editorInput[0].dataUrl,
             name: editorInput[0].meta?.name || 'editor.png',
           })
-          restored += 1
-        }
-        if (editorOutput[0]?.dataUrl) {
-          setEditorResult(editorOutput[0].dataUrl)
           restored += 1
         }
 
@@ -935,18 +920,11 @@ export default function MainDashboard({
     void deleteLocalImages(LOCAL_IMAGE_KEYS.editorSource)
   }, [])
 
-  const handleEditorUseResult = useCallback(() => {
-    if (!editorResult) return
-    setEditorSource({ dataUrl: editorResult, name: 'editado.png' })
-    setEditorResult(null)
+  const handleEditorUseCurrentResult = useCallback(() => {
+    if (!generatedSheets.length) return
+    setEditorSource({ dataUrl: generatedSheets[0], name: 'editado.png' })
     setEditorError('')
-    void deleteLocalImages(LOCAL_IMAGE_KEYS.editorResult)
-  }, [editorResult])
-
-  const handleEditorClearResult = useCallback(() => {
-    setEditorResult(null)
-    void deleteLocalImages(LOCAL_IMAGE_KEYS.editorResult)
-  }, [])
+  }, [generatedSheets])
 
   const canEditorApply = Boolean(
     apiKey.trim() &&
@@ -971,7 +949,6 @@ export default function MainDashboard({
     try {
       const result = await generateAndTrack({
         entryKind: 'edit',
-        skipLastGeneration: true,
         provider,
         apiKey,
         modelId,
@@ -991,8 +968,30 @@ export default function MainDashboard({
       if (!edited) {
         throw new Error('O modelo terminou sem devolver imagem.')
       }
-      setEditorResult(edited)
-      pushToast('Edição aplicada.', 'success')
+
+      // O resultado entra na mesma pipeline do modo avançado: visualização,
+      // grade, frames, correção, exportação e métricas.
+      setGeneratedSheets([edited])
+      setCorrectionFrame(null)
+      setCorrectionPrompt('')
+      setCurrentFrameIndex(0)
+      setModalOpen(false)
+
+      try {
+        const detected = await detectSpriteGrid(edited)
+        const total = detected.columns * detected.rows
+        setColumns(String(detected.columns))
+        setRows(String(detected.rows))
+        setAutoSlice(total > 1)
+        setExportColumns(String(Math.min(4, Math.max(1, total))))
+      } catch (error) {
+        console.warn('[editor-detect-grid]', error)
+      }
+
+      pushToast(
+        'Edição aplicada. Ajuste a grade de recorte para dividir os frames.',
+        'success',
+      )
     } catch (error) {
       const message = describeApiError(error)
       setEditorError(message)
@@ -1012,17 +1011,18 @@ export default function MainDashboard({
     pushToast,
   ])
 
-  const handleEditorDownload = useCallback(() => {
-    if (!editorResult) return
-    downloadDataUrl(editorResult, 'spritetransfer-editado.png')
-    pushToast('Imagem editada baixada.', 'success')
-  }, [editorResult, pushToast])
-
   /* ------------------------ Métrica de qualidade ------------------------ */
   // Avaliada no navegador sempre que os frames exibidos mudam (geração,
   // correção aplicada ou novo recorte da grade). A nota também é anexada à
   // última chamada do histórico, para comparar custo × tempo × qualidade.
   const [quality, setQuality] = useState(null)
+  // No modo editor, a comparação de qualidade usa a própria imagem enviada.
+  const activeReferenceFrames = useMemo(() => {
+    if (settings.mode === 'editor') {
+      return editorSource?.dataUrl ? [editorSource.dataUrl] : []
+    }
+    return referenceFrames
+  }, [settings.mode, editorSource, referenceFrames])
 
   useEffect(() => {
     if (frames.length === 0 || slicingResult || generating) {
@@ -1033,7 +1033,7 @@ export default function MainDashboard({
     }
 
     let cancelled = false
-    evaluateAnimationQuality({ frames, referenceFrames })
+    evaluateAnimationQuality({ frames, referenceFrames: activeReferenceFrames })
       .then((report) => {
         if (cancelled || !report) return
         setQuality(report)
@@ -1079,7 +1079,7 @@ export default function MainDashboard({
     return () => {
       cancelled = true
     }
-  }, [frames, referenceFrames, slicingResult, generating])
+  }, [frames, activeReferenceFrames, slicingResult, generating])
 
   /* ------------------ Fatiamento da referência -------------------------- */
   useEffect(() => {
@@ -2392,13 +2392,13 @@ export default function MainDashboard({
     <>
       <main className="relative mx-auto w-full max-w-[1600px] space-y-4 px-4 pt-5 pb-12">
         {settings.mode === 'editor' ? (
-          <section className="space-y-4">
+          <>
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-3 py-2">
               <p className="flex items-center gap-1.5 text-[11px] font-semibold text-cyan-200">
                 <PencilLine className="size-3.5" />
                 Modo editor
                 <span className="font-normal text-slate-400">
-                  · edite uma imagem enviada como novo frame
+                  · edite uma imagem e divida/corrija os frames
                 </span>
               </p>
               <button
@@ -2433,29 +2433,23 @@ export default function MainDashboard({
               onApply={handleEditorApply}
               busy={editorBusy}
               elapsed={elapsed}
-              result={editorResult}
               error={editorError}
-              onDownloadResult={handleEditorDownload}
-              onUseResultAsSource={handleEditorUseResult}
-              onClearResult={handleEditorClearResult}
               canApply={canEditorApply}
               hint={editorHint}
+              hasResult={generatedSheets.length > 0}
+              onUseResultAsBase={handleEditorUseCurrentResult}
             />
-
-            <p className="flex items-start gap-2 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5 text-[10px] leading-relaxed text-slate-500">
-              <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-emerald-400/80" />
-              <span>
-                <strong className="font-semibold text-slate-300">
-                  Privacidade:
-                </strong>{' '}
-                nada é salvo nos servidores do app. A imagem enviada e o
-                resultado ficam apenas neste navegador e podem ser removidos em{' '}
-                <strong className="text-slate-300">Configurações</strong>.
-              </span>
-            </p>
-          </section>
+          </>
         ) : (
           <>
+        {settings.mode === 'simple' && (
+          <p className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[10px] leading-relaxed text-amber-200">
+            <strong className="font-semibold">Modo simples em desenvolvimento:</strong>{' '}
+            por enquanto a interface avançada continua ativa. Você pode voltar ao
+            modo avançado em Configurações.
+          </p>
+        )}
+
         {settings.mode === 'simple' && (
           <p className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[10px] leading-relaxed text-amber-200">
             <strong className="font-semibold">Modo simples em desenvolvimento:</strong>{' '}
@@ -2520,13 +2514,16 @@ export default function MainDashboard({
           />
         </section>
 
+          </>
+        )}
+
         {/* Faixa 2 — visualização dos frames e grade/exportação */}
         <section
           aria-label="Visualização e grade"
           className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]"
         >
           <PreviewPanel
-            referenceFrames={referenceFrames}
+            referenceFrames={activeReferenceFrames}
             frames={frames}
             fps={fps}
             onFpsChange={setFps}
@@ -2623,8 +2620,6 @@ export default function MainDashboard({
             </span>
           </p>
         </section>
-          </>
-        )}
       </main>
 
       <LogsPage
