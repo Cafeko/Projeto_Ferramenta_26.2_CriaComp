@@ -156,8 +156,17 @@ No Replicate, o `aspect_ratio` é derivado da grade de saída: se o modelo decla
 a proporção exata, ela é usada; caso contrário, o backend prefere
 `match_input_image`/`auto` (para preservar a proporção da folha de referência) e
 nunca envia um valor fora da lista aceita pelo modelo — por exemplo, `21:9` em
-modelos que só chegam a `16:9`. Se mesmo assim o provedor recusar apenas a
-proporção, a requisição é repetida uma vez sem esse campo.
+modelos que só chegam a `16:9`. Se mesmo assim o provedor recusar parâmetros
+opcionais (proporção, formato, quantidade), a requisição é repetida uma vez sem
+os campos citados no erro.
+
+O schema de entrada do modelo é lido de `latest_version.openapi_schema`; quando
+o Replicate não devolve o schema nessa resposta, o backend busca a versão
+explicitamente em `/models/{owner}/{name}/versions/{id}` antes de desistir.
+Modelos oficiais rodam pela rota `/models/{owner}/{name}/predictions`; modelos
+com versão informada usam `/predictions` com `version`. Para modelos que aceitam
+**apenas uma imagem** (ex.: FLUX Kontext), a geração envia só a referência de
+pose e ignora aparência/estilo, em vez de recusar a requisição.
 
 O backend **nunca troca o modelo escolhido pelo usuário**. Se o modelo falhar
 (credencial interna, erro do modelo, limite etc.), o erro volta com a mensagem

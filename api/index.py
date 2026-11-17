@@ -2698,11 +2698,19 @@ class OpenRouterAdapter(ProviderAdapter):
 
 _REPLICATE_FALLBACK = [
     ModelOption(
+        id="google/nano-banana-pro",
+        name="Google Nano Banana Pro",
+        description=(
+            "Geração e edição com até 14 referências, texto nítido e saída de "
+            "1K a 4K."
+        ),
+    ),
+    ModelOption(
         id="google/nano-banana-2.1",
         name="Google Nano Banana 2.1",
         description=(
-            "Geração e edição de imagens com até 14 referências, texto nítido "
-            "e saída de 1K a 4K."
+            "Geração e edição de imagens com múltiplas referências e busca "
+            "opcional."
         ),
     ),
     ModelOption(
@@ -2711,24 +2719,49 @@ _REPLICATE_FALLBACK = [
         description="Geração e edição de imagens com referências visuais.",
     ),
     ModelOption(
+        id="black-forest-labs/flux-2-pro",
+        name="FLUX.2 Pro",
+        description="Geração e edição de alta qualidade com até 8 referências.",
+    ),
+    ModelOption(
+        id="black-forest-labs/flux-2-flex",
+        name="FLUX.2 Flex",
+        description="FLUX.2 com controle de passos e orientação por prompt.",
+    ),
+    ModelOption(
+        id="black-forest-labs/flux-kontext-max",
+        name="FLUX.1 Kontext Max",
+        description="Edição de imagens guiada por texto (uma imagem de entrada).",
+    ),
+    ModelOption(
         id="black-forest-labs/flux-kontext-pro",
         name="FLUX.1 Kontext Pro",
         description="Edição de imagens guiada por texto e imagem de entrada.",
     ),
     ModelOption(
-        id="black-forest-labs/flux-2-pro",
-        name="FLUX.2 Pro",
-        description="Geração e edição de alta qualidade com referências visuais.",
+        id="bytedance/seedream-4.5",
+        name="ByteDance Seedream 4.5",
+        description="Geração e edição com múltiplas referências e saída em 4K.",
     ),
     ModelOption(
         id="bytedance/seedream-4",
-        name="Seedream 4",
+        name="ByteDance Seedream 4",
         description="Geração e edição de imagens com múltiplas referências.",
     ),
     ModelOption(
         id="openai/gpt-image-2",
         name="OpenAI GPT Image 2",
-        description="Geração e edição de imagens via Replicate.",
+        description="Geração e edição de imagens via Replicate (chave OpenAI opcional).",
+    ),
+    ModelOption(
+        id="openai/gpt-image-1.5",
+        name="OpenAI GPT Image 1.5",
+        description="Geração e edição com múltiplas imagens de entrada.",
+    ),
+    ModelOption(
+        id="minimax/image-01",
+        name="MiniMax Image 01",
+        description="Geração de imagens com referência de sujeito opcional.",
     ),
 ]
 
@@ -2770,9 +2803,18 @@ def _replicate_parse_model(model_id: str) -> tuple[str, str, str | None]:
 
 def _replicate_fetch_schema(
     api_key: str, owner: str, name: str, version: str | None
-) -> tuple[dict[str, Any], str | None]:
+) -> tuple[dict[str, Any], str | None, bool]:
+    """Devolve (schema de entrada, versão resolvida, é modelo oficial).
+
+    O `GET /models/{owner}/{name}` nem sempre inclui `openapi_schema` no
+    `latest_version`; nesse caso buscamos a versão explicitamente. Sem isso,
+    quase todos os modelos falhavam antes mesmo de criar a predição.
+    """
     headers = _replicate_headers(api_key)
     resolved_version = version
+    is_official = False
+    schema: Any = None
+
     if version:
         detail = _request_json(
             "GET",
@@ -2788,21 +2830,34 @@ def _replicate_fetch_schema(
             provider="replicate",
             headers=headers,
         )
+        is_official = bool(detail.get("is_official")) if isinstance(detail, dict) else False
         latest = detail.get("latest_version") if isinstance(detail, dict) else None
         schema = latest.get("openapi_schema") if isinstance(latest, dict) else None
         if isinstance(latest, dict) and latest.get("id"):
             resolved_version = str(latest["id"])
+
+        # Alguns modelos oficiais não devolvem o schema no `latest_version`.
+        if not isinstance(schema, dict) and resolved_version:
+            version_detail = _request_json(
+                "GET",
+                f"{REPLICATE_API}/models/{owner}/{name}/versions/{resolved_version}",
+                provider="replicate",
+                headers=headers,
+            )
+            if isinstance(version_detail, dict):
+                schema = version_detail.get("openapi_schema")
 
     if not isinstance(schema, dict):
         raise ApiError(
             400,
             "Não foi possível ler a configuração de entrada do modelo. Confira "
             "se o ID está correto e se o modelo é público e tem uma versão "
-            "disponível.",
+            "disponível. Se ele existir, tente informar a versão completa "
+            "('owner/modelo:versão').",
             code="invalid_model_schema",
             provider="replicate",
         )
-    return schema, resolved_version
+    return schema, resolved_version, is_official
 
 
 def _replicate_is_image_prop(name: str, spec: dict[str, Any]) -> bool:
@@ -3054,35 +3109,42 @@ def _replicate_build_input(
             )
             if len(plan.visuals) > 1:
                 if plan.mode != "correction":
-                    raise ApiError(
-                        400,
-                        "Este modelo aceita apenas uma imagem de referência, mas "
-                        "várias foram enviadas. Gere um frame por vez ou escolha "
-                        "um modelo multi-imagem.",
-                        code="too_many_images",
-                        provider="replicate",
+                    # Geração: o modelo aceita só uma imagem. Mantém a
+                    # referência de pose (essencial) e dispensa as opcionais
+                    # (aparência/estilo), em vez de falhar a requisição.
+                    pose_visuals = [
+                        visual for visual in plan.visuals if visual.role == "pose"
+                    ]
+                    primary = pose_visuals[0] if pose_visuals else plan.visuals[0]
+                    inputs[name] = primary.image.data_url
+                    inputs[prompt_name] = (
+                        "ONLY ONE REFERENCE IMAGE IS PROVIDED: "
+                        f"{primary.label}. Ignore any other reference images "
+                        "mentioned in the instructions and use this image for "
+                        "pose and layout.\n\n" + plan.body
                     )
-                previous_visuals = [
-                    visual for visual in plan.visuals if visual.role == "previous"
-                ]
-                if plan.target_frame_index is None and len(previous_visuals) > 1:
-                    raise ApiError(
-                        400,
-                        "Este modelo aceita apenas uma imagem por vez. Corrija "
-                        "um frame isolado por vez ou escolha um modelo "
-                        "multi-imagem.",
-                        code="too_many_images",
-                        provider="replicate",
+                else:
+                    previous_visuals = [
+                        visual for visual in plan.visuals if visual.role == "previous"
+                    ]
+                    if plan.target_frame_index is None and len(previous_visuals) > 1:
+                        raise ApiError(
+                            400,
+                            "Este modelo aceita apenas uma imagem por vez. Corrija "
+                            "um frame isolado por vez ou escolha um modelo "
+                            "multi-imagem.",
+                            code="too_many_images",
+                            provider="replicate",
+                        )
+                    primary = previous_visuals[0] if previous_visuals else plan.visuals[0]
+                    inputs[name] = primary.image.data_url
+                    inputs[prompt_name] = (
+                        "INPUT IMAGE: the previous generated sprite frame to correct.\n\n"
+                        + plan.body
+                        + "\n\nNOTE: this model accepts only one input image. The "
+                        "provided image is the previous generated sprite; use it as "
+                        "the source of truth for both pose and correction."
                     )
-                primary = previous_visuals[0]
-                inputs[name] = primary.image.data_url
-                inputs[prompt_name] = (
-                    "INPUT IMAGE: the previous generated sprite frame to correct.\n\n"
-                    + plan.body
-                    + "\n\nNOTE: this model accepts only one input image. The "
-                    "provided image is the previous generated sprite; use it as "
-                    "the source of truth for both pose and correction."
-                )
             else:
                 inputs[name] = plan.visuals[0].image.data_url
         else:
@@ -3103,6 +3165,34 @@ def _replicate_build_input(
     _replicate_set_supported(inputs, props, "num_outputs", 1)
     _replicate_set_supported(inputs, props, "num_images", 1)
     return inputs
+
+
+def _replicate_retry_inputs(
+    exc: ApiError, inputs: dict[str, Any]
+) -> dict[str, Any] | None:
+    """Remove parâmetros opcionais citados no erro do provedor (1 tentativa)."""
+    if exc.code not in ("invalid_request", "provider_error"):
+        return None
+    text = f"{exc.details or ''} {exc.message or ''}".lower()
+    retry = dict(inputs)
+    removed = False
+
+    if "aspect_ratio" in retry and (
+        "aspect_ratio" in text or "aspect ratio" in text or "ratio" in text
+    ):
+        retry.pop("aspect_ratio")
+        removed = True
+    for key in (
+        "output_format",
+        "output_quality",
+        "num_outputs",
+        "num_images",
+        "resolution",
+    ):
+        if key in retry and key in text:
+            retry.pop(key)
+            removed = True
+    return retry if removed else None
 
 
 def _replicate_cancel(api_key: str, prediction: dict[str, Any]) -> None:
@@ -3321,7 +3411,7 @@ class ReplicateAdapter(ProviderAdapter):
         timeout_seconds: float | None = None,
     ) -> AdapterResult:
         owner, name, version = _replicate_parse_model(model_id)
-        schema, resolved_version = _replicate_fetch_schema(
+        schema, resolved_version, is_official = _replicate_fetch_schema(
             api_key, owner, name, version
         )
         inputs = _replicate_build_input(schema, plan)
@@ -3331,6 +3421,16 @@ class ReplicateAdapter(ProviderAdapter):
         headers["Cancel-After"] = "240s"
 
         def create_prediction(body_inputs: dict[str, Any]) -> Any:
+            # Modelos oficiais rodam pela rota do modelo (sempre a última
+            # versão), como recomenda a documentação do Replicate.
+            if is_official and not version:
+                return _request_json(
+                    "POST",
+                    f"{REPLICATE_API}/models/{owner}/{name}/predictions",
+                    provider=self.provider,
+                    headers=headers,
+                    json_body={"input": body_inputs},
+                )
             if resolved_version:
                 return _request_json(
                     "POST",
@@ -3350,22 +3450,13 @@ class ReplicateAdapter(ProviderAdapter):
         try:
             prediction = create_prediction(inputs)
         except ApiError as exc:
-            # Rede de segurança: se o modelo recusar apenas a proporção pedida,
-            # repete uma vez sem `aspect_ratio` em vez de falhar a geração.
-            rejection = f"{exc.details or ''} {exc.message or ''}".lower()
-            if (
-                exc.code == "invalid_request"
-                and "aspect_ratio" in rejection
-                and "aspect_ratio" in inputs
-            ):
-                retry_inputs = {
-                    key: value
-                    for key, value in inputs.items()
-                    if key != "aspect_ratio"
-                }
-                prediction = create_prediction(retry_inputs)
-            else:
+            # Rede de segurança: se o modelo recusar parâmetros opcionais
+            # (proporção, formato, quantidade), repete uma vez sem eles em vez
+            # de falhar a geração.
+            retry_inputs = _replicate_retry_inputs(exc, inputs)
+            if retry_inputs is None:
                 raise
+            prediction = create_prediction(retry_inputs)
 
         if not isinstance(prediction, dict):
             raise ApiError(
