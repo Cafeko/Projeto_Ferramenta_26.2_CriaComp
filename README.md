@@ -408,7 +408,10 @@ interface é organizada em **quatro faixas horizontais** (empilham no celular):
   remontada automaticamente.
 - **Correção em lote** (à direita, com os ~40% restantes): a instrução é
   aplicada à spritesheet inteira, enviada como uma única imagem em
-  `previous_generated_images` para preservar o contexto.
+  `previous_generated_images` para preservar o contexto. Ao terminar, abre uma
+  confirmação comparando **antes (atual)** e **depois (editada)**, com
+  `[ MANTER ATUAL ]` e `[ USAR EDITADA ]` — nada muda até você escolher. O mesmo
+  vale no modo editor.
 
 ### Faixa 4 — métricas e privacidade
 - **Métricas** (pode ser ocultada em Configurações): ocupa a largura toda, com a
@@ -444,32 +447,28 @@ navegador em `spritetransfer:settings`):
 
 ### Modo editor
 
-Ao escolher **Modo editor** em Configurações, o topo do gerador vira uma tela
-mínima de edição; abaixo dela, a mesma pipeline do modo avançado continua
-disponível:
+Ao escolher **Modo editor** em Configurações, o topo do gerador serve **apenas
+para carregar a imagem** que será editada. Todo o resto acontece na mesma
+pipeline do modo avançado, abaixo:
 
 - **Imagem para editar:** envie qualquer imagem (frame, sprite ou arte) por
-  arrastar/soltar ou clique. Ela é a fonte de verdade da edição.
-- **Instrução de edição:** descreva apenas o que deve mudar. O botão
-  `[ APLICAR EDIÇÃO ]` envia a imagem + a instrução como correção de uma única
-  imagem (sem referência de movimento e sem grade).
-- **Resultado como novo spritesheet:** ao terminar, o resultado entra na
-  **Visualização dos frames**, na **Grade de Recorte** e no **Animation
-  Frames**. A grade é detectada automaticamente; ajuste Colunas/Linhas se
-  precisar dividir os frames de outro jeito.
-- **Frame a frame ou animação:** escolha o modo, navegue com Anterior/Próximo e
-  ajuste o FPS como no modo avançado.
-- **Correção por frame ou em lote:** use `[ Editar ]` em cada frame ou a
-  **Correção em Lote** para refinar o resultado.
+  arrastar/soltar ou clique. Ela vira o **spritesheet atual**, com a grade
+  detectada automaticamente (ajustável em Colunas/Linhas).
+- **Sem comparação com original:** a visualização mostra só a imagem/frame em
+  edição, já que não existe uma referência original para comparar.
+- **Correção em lote:** descreva a alteração e use
+  `[ APLICAR CORREÇÃO EM LOTE ]`. Ao terminar, escolha `[ MANTER ATUAL ]` ou
+  `[ USAR EDITADA ]` — nada muda até confirmar.
+- **Correção por frame:** use `[ Editar ]` em um frame (mesmo fluxo de candidato
+  do modo avançado).
+- **Frame a frame ou animação:** navegue com Anterior/Próximo e ajuste o FPS.
 - **Exportação:** `[ EXPORTAR SPRITESHEET PNG (GRID) ]` e
   `[ EXPORTAR GIF ANIMADO ]`.
-- **Usar o resultado atual como base:** encadeia outra edição a partir do
-  resultado (a imagem editada vira a nova entrada).
 - **Métricas:** o painel do rodapé aparece em todos os modos e registra a edição
   como imagem mais recente; só some se **Mostrar métricas no final** estiver
   desligado.
 - O modo editor usa a mesma configuração de API e grava os logs como tipo
-  **Edição**. A imagem enviada e o resultado também entram na sessão salva.
+  **Edição**. A imagem carregada e o resultado entram na sessão salva.
 
 Para voltar, use o atalho **Voltar ao modo avançado** no topo do editor ou troque
 em Configurações.

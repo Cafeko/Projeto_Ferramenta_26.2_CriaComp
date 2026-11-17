@@ -135,8 +135,6 @@ export function loadWorkspaceSettings() {
         data.lastGeneration && typeof data.lastGeneration === 'object'
           ? data.lastGeneration
           : null,
-      editorPrompt:
-        typeof data.editorPrompt === 'string' ? data.editorPrompt : '',
     }
   } catch {
     return null

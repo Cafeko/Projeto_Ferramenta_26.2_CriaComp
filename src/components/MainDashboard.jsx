@@ -11,6 +11,7 @@ import {
 
 import ApiConfigPanel from './dashboard/ApiConfigPanel'
 import AnimationFramesPanel from './dashboard/AnimationFramesPanel'
+import BatchEditModal from './dashboard/BatchEditModal'
 import CorrectionPanel from './dashboard/CorrectionPanel'
 import EditorMode from './dashboard/EditorMode'
 import ExportPanel from './dashboard/ExportPanel'
@@ -442,11 +443,6 @@ export default function MainDashboard({
 
   /* ----------------------------- Editor --------------------------------- */
   const [editorSource, setEditorSource] = useState(null)
-  const [editorPrompt, setEditorPrompt] = useState(
-    () => initialWorkspace?.editorPrompt ?? '',
-  )
-  const [editorBusy, setEditorBusy] = useState(false)
-  const [editorError, setEditorError] = useState('')
 
   /* ----------------------------- Player --------------------------------- */
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0)
@@ -478,6 +474,7 @@ export default function MainDashboard({
   const [modalApplyingSingle, setModalApplyingSingle] = useState(false)
   const [modalApplyingAll, setModalApplyingAll] = useState(false)
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
+  const [batchCandidate, setBatchCandidate] = useState(null)
 
   /* ------------------- Métricas de tempo e custo ----------------------- */
   // Histórico das chamadas à IA (tempo, tokens, custo). Fica no localStorage
@@ -681,7 +678,6 @@ export default function MainDashboard({
         Number.parseInt(generationColumns, 10) || null,
       generationRows: Number.parseInt(generationRows, 10) || null,
       lastGeneration,
-      editorPrompt,
     })
     if (!saved) warnLocalSaveFailure('salvar as configurações da sessão')
   }, [
@@ -696,7 +692,6 @@ export default function MainDashboard({
     generationColumns,
     generationRows,
     lastGeneration,
-    editorPrompt,
     saveSession,
     warnLocalSaveFailure,
   ])
@@ -869,9 +864,6 @@ export default function MainDashboard({
       setQuality(null)
       setLastGeneration(null)
       setEditorSource(null)
-      setEditorResult(null)
-      setEditorPrompt('')
-      setEditorError('')
       setApiKey('')
       setSavedKeys({})
       setSavedModels({})
@@ -889,6 +881,8 @@ export default function MainDashboard({
   }, [pushToast, warnLocalSaveFailure])
 
   /* ----------------------------- Modo editor ---------------------------- */
+  // Carregar a imagem já a coloca na pipeline como spritesheet atual; a edição
+  // acontece na correção em lote ou no editor de cada frame, abaixo.
   const handleEditorFileSelected = useCallback(
     async (file) => {
       try {
@@ -899,7 +893,28 @@ export default function MainDashboard({
           height: image.height,
           name: file.name,
         })
-        setEditorError('')
+        setGeneratedSheets([image.dataUrl])
+        setCorrectionFrame(null)
+        setCorrectionPrompt('')
+        setCorrectionError('')
+        setCurrentFrameIndex(0)
+        setModalOpen(false)
+
+        try {
+          const detected = await detectSpriteGrid(image.dataUrl)
+          const total = detected.columns * detected.rows
+          setColumns(String(detected.columns))
+          setRows(String(detected.rows))
+          setAutoSlice(total > 1)
+          setExportColumns(String(Math.min(4, Math.max(1, total))))
+        } catch (detectError) {
+          console.warn('[editor-detect-grid]', detectError)
+        }
+
+        pushToast(
+          'Imagem carregada. Use a Correção em Lote ou edite um frame abaixo.',
+          'info',
+        )
         if (image.resized) {
           pushToast(
             `Imagem redimensionada para ${image.width}×${image.height} px para ` +
@@ -916,100 +931,15 @@ export default function MainDashboard({
 
   const handleEditorClearSource = useCallback(() => {
     setEditorSource(null)
-    setEditorError('')
+    setGeneratedSheets([])
+    setFrames([])
+    setCorrectionFrame(null)
+    setCorrectionPrompt('')
+    setCorrectionError('')
+    lastSavedSheetsRef.current = null
     void deleteLocalImages(LOCAL_IMAGE_KEYS.editorSource)
+    void deleteLocalImages(LOCAL_IMAGE_KEYS.generated)
   }, [])
-
-  const handleEditorUseCurrentResult = useCallback(() => {
-    if (!generatedSheets.length) return
-    setEditorSource({ dataUrl: generatedSheets[0], name: 'editado.png' })
-    setEditorError('')
-  }, [generatedSheets])
-
-  const canEditorApply = Boolean(
-    apiKey.trim() &&
-      modelId &&
-      editorSource?.dataUrl &&
-      editorPrompt.trim() &&
-      !editorBusy,
-  )
-
-  const editorHint = useMemo(() => {
-    if (!apiKey.trim()) return 'Informe e valide sua chave de API.'
-    if (!modelId) return 'Valide a chave e escolha um modelo de imagem.'
-    if (!editorSource?.dataUrl) return 'Envie a imagem que você quer editar.'
-    if (!editorPrompt.trim()) return 'Descreva o que deve ser alterado.'
-    return 'A edição usa uma única imagem e devolve um novo frame.'
-  }, [apiKey, editorPrompt, editorSource, modelId])
-
-  const handleEditorApply = useCallback(async () => {
-    if (!canEditorApply) return
-    setEditorBusy(true)
-    setEditorError('')
-    try {
-      const result = await generateAndTrack({
-        entryKind: 'edit',
-        provider,
-        apiKey,
-        modelId,
-        referenceImages: [],
-        characterAppearance: '',
-        artStyle: '',
-        appearanceImages: [],
-        styleImages: [],
-        previousImages: [editorSource.dataUrl],
-        correctionPrompt: editorPrompt.trim(),
-        targetFrameIndex: null,
-        frameCount: 1,
-        gridColumns: 1,
-        gridRows: 1,
-      })
-      const edited = Array.isArray(result?.images) ? result.images[0] : null
-      if (!edited) {
-        throw new Error('O modelo terminou sem devolver imagem.')
-      }
-
-      // O resultado entra na mesma pipeline do modo avançado: visualização,
-      // grade, frames, correção, exportação e métricas.
-      setGeneratedSheets([edited])
-      setCorrectionFrame(null)
-      setCorrectionPrompt('')
-      setCurrentFrameIndex(0)
-      setModalOpen(false)
-
-      try {
-        const detected = await detectSpriteGrid(edited)
-        const total = detected.columns * detected.rows
-        setColumns(String(detected.columns))
-        setRows(String(detected.rows))
-        setAutoSlice(total > 1)
-        setExportColumns(String(Math.min(4, Math.max(1, total))))
-      } catch (error) {
-        console.warn('[editor-detect-grid]', error)
-      }
-
-      pushToast(
-        'Edição aplicada. Ajuste a grade de recorte para dividir os frames.',
-        'success',
-      )
-    } catch (error) {
-      const message = describeApiError(error)
-      setEditorError(message)
-      pushToast(message, 'error')
-      console.error('[editor]', error)
-    } finally {
-      setEditorBusy(false)
-    }
-  }, [
-    apiKey,
-    canEditorApply,
-    editorPrompt,
-    editorSource,
-    generateAndTrack,
-    modelId,
-    provider,
-    pushToast,
-  ])
 
   /* ------------------------ Métrica de qualidade ------------------------ */
   // Avaliada no navegador sempre que os frames exibidos mudam (geração,
@@ -1018,11 +948,10 @@ export default function MainDashboard({
   const [quality, setQuality] = useState(null)
   // No modo editor, a comparação de qualidade usa a própria imagem enviada.
   const activeReferenceFrames = useMemo(() => {
-    if (settings.mode === 'editor') {
-      return editorSource?.dataUrl ? [editorSource.dataUrl] : []
-    }
+    // No editor não existe referência original: só o frame em edição.
+    if (settings.mode === 'editor') return []
     return referenceFrames
-  }, [settings.mode, editorSource, referenceFrames])
+  }, [settings.mode, referenceFrames])
 
   useEffect(() => {
     if (frames.length === 0 || slicingResult || generating) {
@@ -1214,14 +1143,14 @@ export default function MainDashboard({
 
   /* ------------------------ Cronômetro ---------------------------------- */
   useEffect(() => {
-    if (!generating && !correcting && !editorBusy) {
+    if (!generating && !correcting) {
       setElapsed(0)
       return undefined
     }
     setElapsed(0)
     const id = window.setInterval(() => setElapsed((value) => value + 1), 1000)
     return () => window.clearInterval(id)
-  }, [generating, correcting, editorBusy])
+  }, [generating, correcting])
 
   /* ---------------------------- Handlers -------------------------------- */
   const runValidateKey = useCallback(
@@ -1987,21 +1916,21 @@ export default function MainDashboard({
         } catch (detectError) {
           console.warn('[correction-grid]', detectError)
         }
-        setGeneratedSheets(result.images)
-        setColumns(String(resultGrid.columns))
-        setRows(String(resultGrid.rows))
-        setAutoSlice(frames.length > 1)
+        // Não aplica direto: pergunta se mantém a atual ou usa a editada,
+        // igual à correção por frame.
+        setBatchCandidate({ images: result.images, grid: resultGrid })
         pushToast(
-          `${frames.length} frame${frames.length === 1 ? '' : 's'} corrigido${frames.length === 1 ? '' : 's'} em lote.`,
-          'success',
+          'Correção em lote pronta: escolha manter a atual ou usar a editada.',
+          'info',
         )
+        return
       } else {
-        setGeneratedSheets(result.images)
-        setFrames(result.images)
+        setBatchCandidate({ images: result.images, grid: null })
         pushToast(
-          `${result.images.length} frame${result.images.length === 1 ? '' : 's'} corrigido${result.images.length === 1 ? '' : 's'} em lote.`,
-          'success',
+          'Correção em lote pronta: escolha manter a atual ou usar a editada.',
+          'info',
         )
+        return
       }
 
       setCorrectionPrompt('')
@@ -2034,6 +1963,33 @@ export default function MainDashboard({
     styleReference,
     appearanceReference,
   ])
+
+  const handleUseBatchCandidate = useCallback(() => {
+    if (!batchCandidate) return
+    const { images, grid } = batchCandidate
+    if (images.length === 1 && grid) {
+      setGeneratedSheets(images)
+      setColumns(String(grid.columns))
+      setRows(String(grid.rows))
+      setAutoSlice(frames.length > 1)
+    } else {
+      setGeneratedSheets(images)
+      setFrames(images)
+    }
+    setBatchCandidate(null)
+    setCorrectionPrompt('')
+    setCorrectionFrame(null)
+    pushToast('Correção em lote aplicada.', 'success')
+  }, [batchCandidate, frames.length, pushToast])
+
+  const handleKeepBatchCurrent = useCallback(() => {
+    if (!batchCandidate) return
+    setBatchCandidate(null)
+    pushToast(
+      'Correção em lote descartada. A versão anterior foi mantida.',
+      'info',
+    )
+  }, [batchCandidate, pushToast])
 
   /* --------------------------- Modal: correção individual -------------------------- */
   const handleModalApplySingle = useCallback(async () => {
@@ -2428,16 +2384,6 @@ export default function MainDashboard({
               source={editorSource}
               onFileSelected={handleEditorFileSelected}
               onClearSource={handleEditorClearSource}
-              prompt={editorPrompt}
-              onPromptChange={setEditorPrompt}
-              onApply={handleEditorApply}
-              busy={editorBusy}
-              elapsed={elapsed}
-              error={editorError}
-              canApply={canEditorApply}
-              hint={editorHint}
-              hasResult={generatedSheets.length > 0}
-              onUseResultAsBase={handleEditorUseCurrentResult}
             />
           </>
         ) : (
@@ -2536,6 +2482,7 @@ export default function MainDashboard({
             generationError={generationError}
             slicing={slicingResult}
             onRemoveGenerated={() => setRemoveDialogOpen(true)}
+            showOriginal={settings.mode !== 'editor'}
           />
 
           <div className="grid gap-4 md:grid-cols-2 xl:block xl:space-y-4">
@@ -2636,6 +2583,14 @@ export default function MainDashboard({
         onClearSession={handleClearSession}
         clearing={clearingSession}
         onClose={onCloseSettings}
+      />
+
+      <BatchEditModal
+        open={Boolean(batchCandidate)}
+        previous={generatedSheets[0] || frames[0] || null}
+        candidate={batchCandidate?.images?.[0] || null}
+        onUseCandidate={handleUseBatchCandidate}
+        onKeepCurrent={handleKeepBatchCurrent}
       />
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />

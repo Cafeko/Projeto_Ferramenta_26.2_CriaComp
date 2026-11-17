@@ -453,10 +453,13 @@ export default function PreviewPanel({
   generationError,
   slicing,
   onRemoveGenerated,
+  showOriginal = true,
 }) {
   const refs = Array.isArray(referenceFrames) ? referenceFrames : []
   const gens = Array.isArray(frames) ? frames : []
-  const totalFrames = Math.max(refs.length, gens.length)
+  const totalFrames = showOriginal
+    ? Math.max(refs.length, gens.length)
+    : gens.length
   const safeTotal = Math.max(1, totalFrames)
   const safeIndex = totalFrames > 0 ? Math.max(0, Math.min(Math.floor(currentFrameIndex || 0), totalFrames - 1)) : 0
   const hasFrames = gens.length > 0
@@ -480,7 +483,11 @@ export default function PreviewPanel({
     <div className="flex h-full flex-col gap-4">
       <Card
         title="Visualização dos frames"
-        subtitle="Original e novo frame lado a lado"
+        subtitle={
+          showOriginal
+            ? 'Original e novo frame lado a lado'
+            : 'Apenas o frame em edição'
+        }
         icon={LayoutGrid}
         className="flex flex-1 flex-col"
         bodyClassName="flex flex-1 flex-col p-3.5"
@@ -620,23 +627,33 @@ export default function PreviewPanel({
         </div>
 
         {/* Player de frames lado a lado */}
-        <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
-          <FrameView
-            label="Original"
-            accent="slate"
-            frame={hasReference && refs.length > 0 ? refs[safeIndex % refs.length] : null}
-            frameIndex={safeIndex}
-            totalFrames={refs.length}
-            loading={referenceBusy}
-            loadingLabel="Processando referência…"
-            emptyLabel="Nenhuma referência de movimento."
-            viewMode={viewMode}
-            onViewModeChange={onViewModeChange}
-            fps={fps}
-            onFpsChange={onFpsChange}
-            onPrev={goPrev}
-            onNext={goNext}
-          />
+        <div
+          className={`grid flex-1 grid-cols-1 gap-3 ${
+            showOriginal ? 'sm:grid-cols-2' : ''
+          }`}
+        >
+          {showOriginal && (
+            <FrameView
+              label="Original"
+              accent="slate"
+              frame={
+                hasReference && refs.length > 0
+                  ? refs[safeIndex % refs.length]
+                  : null
+              }
+              frameIndex={safeIndex}
+              totalFrames={refs.length}
+              loading={referenceBusy}
+              loadingLabel="Processando referência…"
+              emptyLabel="Nenhuma referência de movimento."
+              viewMode={viewMode}
+              onViewModeChange={onViewModeChange}
+              fps={fps}
+              onFpsChange={onFpsChange}
+              onPrev={goPrev}
+              onNext={goNext}
+            />
+          )}
           <FrameView
             label="Novo frame"
             accent="cyan"
