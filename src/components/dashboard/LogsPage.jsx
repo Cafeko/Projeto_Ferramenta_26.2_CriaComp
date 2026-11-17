@@ -17,6 +17,7 @@ const KIND_LABELS = {
   generation: 'Geração',
   single: 'Correção individual',
   batch: 'Correção em lote',
+  edit: 'Edição',
 }
 
 const PROVIDER_LABELS = Object.fromEntries(
@@ -347,6 +348,7 @@ export default function LogsPage({ open, history, onClose, onClear }) {
             <option value="generation">Geração</option>
             <option value="single">Correção individual</option>
             <option value="batch">Correção em lote</option>
+            <option value="edit">Edição (modo editor)</option>
           </select>
 
           <select

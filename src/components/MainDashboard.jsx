@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Info,
+  PencilLine,
   ShieldCheck,
   X,
   XCircle,
@@ -11,6 +12,7 @@ import {
 import ApiConfigPanel from './dashboard/ApiConfigPanel'
 import AnimationFramesPanel from './dashboard/AnimationFramesPanel'
 import CorrectionPanel from './dashboard/CorrectionPanel'
+import EditorMode from './dashboard/EditorMode'
 import ExportPanel from './dashboard/ExportPanel'
 import FrameEditModal from './FrameEditModal'
 import GridPanel from './dashboard/GridPanel'
@@ -438,6 +440,15 @@ export default function MainDashboard({
   const [generating, setGenerating] = useState(false)
   const [generationError, setGenerationError] = useState('')
 
+  /* ----------------------------- Editor --------------------------------- */
+  const [editorSource, setEditorSource] = useState(null)
+  const [editorResult, setEditorResult] = useState(null)
+  const [editorPrompt, setEditorPrompt] = useState(
+    () => initialWorkspace?.editorPrompt ?? '',
+  )
+  const [editorBusy, setEditorBusy] = useState(false)
+  const [editorError, setEditorError] = useState('')
+
   /* ----------------------------- Player --------------------------------- */
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0)
   const [viewMode, setViewMode] = useState(
@@ -568,11 +579,14 @@ export default function MainDashboard({
   const generateAndTrack = useCallback(
     async (input) => {
       const startedAt = Date.now()
-      const kind = input.correctionPrompt
-        ? input.targetFrameIndex !== null && input.targetFrameIndex !== undefined
-          ? 'single'
-          : 'batch'
-        : 'generation'
+      const kind =
+        input.entryKind ||
+        (input.correctionPrompt
+          ? input.targetFrameIndex !== null &&
+            input.targetFrameIndex !== undefined
+            ? 'single'
+            : 'batch'
+          : 'generation')
 
       try {
         const result = await generateSprites(input)
@@ -589,7 +603,11 @@ export default function MainDashboard({
         setUsageHistory((current) =>
           [...current, entry].slice(-MAX_USAGE_HISTORY),
         )
-        if (Array.isArray(result.images) && result.images.length > 0) {
+        if (
+          !input.skipLastGeneration &&
+          Array.isArray(result.images) &&
+          result.images.length > 0
+        ) {
           setLastGeneration({
             at: entry.at,
             kind: entry.kind,
@@ -664,6 +682,7 @@ export default function MainDashboard({
         Number.parseInt(generationColumns, 10) || null,
       generationRows: Number.parseInt(generationRows, 10) || null,
       lastGeneration,
+      editorPrompt,
     })
     if (!saved) warnLocalSaveFailure('salvar as configurações da sessão')
   }, [
@@ -678,6 +697,7 @@ export default function MainDashboard({
     generationColumns,
     generationRows,
     lastGeneration,
+    editorPrompt,
     saveSession,
     warnLocalSaveFailure,
   ])
@@ -699,6 +719,29 @@ export default function MainDashboard({
     })
   }, [generatedSheets, saveSession, warnLocalSaveFailure])
 
+  // Modo editor: a imagem de entrada e o resultado ficam salvos como os demais
+  // dados da sessão; remover qualquer um deles apaga a cópia local.
+  useEffect(() => {
+    if (!saveSession || !editorSource?.dataUrl) return
+    void putLocalImages(LOCAL_IMAGE_KEYS.editorSource, [
+      {
+        dataUrl: editorSource.dataUrl,
+        meta: { name: editorSource.name || 'editor.png' },
+      },
+    ]).then((ok) => {
+      if (!ok) warnLocalSaveFailure('salvar a imagem do editor')
+    })
+  }, [editorSource, saveSession, warnLocalSaveFailure])
+
+  useEffect(() => {
+    if (!saveSession || !editorResult) return
+    void putLocalImages(LOCAL_IMAGE_KEYS.editorResult, [
+      { dataUrl: editorResult },
+    ]).then((ok) => {
+      if (!ok) warnLocalSaveFailure('salvar o resultado do editor')
+    })
+  }, [editorResult, saveSession, warnLocalSaveFailure])
+
   // Restaura, uma única vez ao abrir, as imagens salvas neste navegador.
   useEffect(() => {
     if (restoreLocalRef.current) return
@@ -708,12 +751,15 @@ export default function MainDashboard({
 
     ;(async () => {
       try {
-        const [pose, style, appearanceImage, generated] = await Promise.all([
-          getLocalImages(LOCAL_IMAGE_KEYS.pose),
-          getLocalImages(LOCAL_IMAGE_KEYS.style),
-          getLocalImages(LOCAL_IMAGE_KEYS.appearance),
-          getLocalImages(LOCAL_IMAGE_KEYS.generated),
-        ])
+        const [pose, style, appearanceImage, generated, editorInput, editorOutput] =
+          await Promise.all([
+            getLocalImages(LOCAL_IMAGE_KEYS.pose),
+            getLocalImages(LOCAL_IMAGE_KEYS.style),
+            getLocalImages(LOCAL_IMAGE_KEYS.appearance),
+            getLocalImages(LOCAL_IMAGE_KEYS.generated),
+            getLocalImages(LOCAL_IMAGE_KEYS.editorSource),
+            getLocalImages(LOCAL_IMAGE_KEYS.editorResult),
+          ])
 
         let restored = 0
         if (pose[0]?.dataUrl) {
@@ -744,6 +790,18 @@ export default function MainDashboard({
           // Evita regravar exatamente o que acabou de ser restaurado.
           lastSavedSheetsRef.current = sheets
           setGeneratedSheets(sheets)
+          restored += 1
+        }
+
+        if (editorInput[0]?.dataUrl) {
+          setEditorSource({
+            dataUrl: editorInput[0].dataUrl,
+            name: editorInput[0].meta?.name || 'editor.png',
+          })
+          restored += 1
+        }
+        if (editorOutput[0]?.dataUrl) {
+          setEditorResult(editorOutput[0].dataUrl)
           restored += 1
         }
 
@@ -825,6 +883,10 @@ export default function MainDashboard({
       setSlicingResult(false)
       setQuality(null)
       setLastGeneration(null)
+      setEditorSource(null)
+      setEditorResult(null)
+      setEditorPrompt('')
+      setEditorError('')
       setApiKey('')
       setSavedKeys({})
       setSavedModels({})
@@ -840,6 +902,121 @@ export default function MainDashboard({
       setClearingSession(false)
     }
   }, [pushToast, warnLocalSaveFailure])
+
+  /* ----------------------------- Modo editor ---------------------------- */
+  const handleEditorFileSelected = useCallback(
+    async (file) => {
+      try {
+        const image = await readImageFile(file)
+        setEditorSource({
+          dataUrl: image.dataUrl,
+          width: image.width,
+          height: image.height,
+          name: file.name,
+        })
+        setEditorError('')
+        if (image.resized) {
+          pushToast(
+            `Imagem redimensionada para ${image.width}×${image.height} px para ` +
+              'caber no limite.',
+            'info',
+          )
+        }
+      } catch (error) {
+        pushToast(describeApiError(error), 'error')
+      }
+    },
+    [pushToast],
+  )
+
+  const handleEditorClearSource = useCallback(() => {
+    setEditorSource(null)
+    setEditorError('')
+    void deleteLocalImages(LOCAL_IMAGE_KEYS.editorSource)
+  }, [])
+
+  const handleEditorUseResult = useCallback(() => {
+    if (!editorResult) return
+    setEditorSource({ dataUrl: editorResult, name: 'editado.png' })
+    setEditorResult(null)
+    setEditorError('')
+    void deleteLocalImages(LOCAL_IMAGE_KEYS.editorResult)
+  }, [editorResult])
+
+  const handleEditorClearResult = useCallback(() => {
+    setEditorResult(null)
+    void deleteLocalImages(LOCAL_IMAGE_KEYS.editorResult)
+  }, [])
+
+  const canEditorApply = Boolean(
+    apiKey.trim() &&
+      modelId &&
+      editorSource?.dataUrl &&
+      editorPrompt.trim() &&
+      !editorBusy,
+  )
+
+  const editorHint = useMemo(() => {
+    if (!apiKey.trim()) return 'Informe e valide sua chave de API.'
+    if (!modelId) return 'Valide a chave e escolha um modelo de imagem.'
+    if (!editorSource?.dataUrl) return 'Envie a imagem que você quer editar.'
+    if (!editorPrompt.trim()) return 'Descreva o que deve ser alterado.'
+    return 'A edição usa uma única imagem e devolve um novo frame.'
+  }, [apiKey, editorPrompt, editorSource, modelId])
+
+  const handleEditorApply = useCallback(async () => {
+    if (!canEditorApply) return
+    setEditorBusy(true)
+    setEditorError('')
+    try {
+      const result = await generateAndTrack({
+        entryKind: 'edit',
+        skipLastGeneration: true,
+        provider,
+        apiKey,
+        modelId,
+        referenceImages: [],
+        characterAppearance: '',
+        artStyle: '',
+        appearanceImages: [],
+        styleImages: [],
+        previousImages: [editorSource.dataUrl],
+        correctionPrompt: editorPrompt.trim(),
+        targetFrameIndex: null,
+        frameCount: 1,
+        gridColumns: 1,
+        gridRows: 1,
+      })
+      const edited = Array.isArray(result?.images) ? result.images[0] : null
+      if (!edited) {
+        throw new Error('O modelo terminou sem devolver imagem.')
+      }
+      setEditorResult(edited)
+      pushToast('Edição aplicada.', 'success')
+    } catch (error) {
+      const message = describeApiError(error)
+      setEditorError(message)
+      pushToast(message, 'error')
+      console.error('[editor]', error)
+    } finally {
+      setEditorBusy(false)
+    }
+  }, [
+    apiKey,
+    canEditorApply,
+    editorPrompt,
+    editorSource,
+    generateAndTrack,
+    modelId,
+    provider,
+    pushToast,
+  ])
+
+  const handleEditorDownload = useCallback(() => {
+    if (!editorResult) return
+    downloadDataUrl(editorResult, 'spritetransfer-editado.png')
+    pushToast('Imagem editada baixada.', 'success')
+  }, [editorResult, pushToast])
 
   /* ------------------------ Métrica de qualidade ------------------------ */
   // Avaliada no navegador sempre que os frames exibidos mudam (geração,
@@ -1037,14 +1214,14 @@ export default function MainDashboard({
 
   /* ------------------------ Cronômetro ---------------------------------- */
   useEffect(() => {
-    if (!generating && !correcting) {
+    if (!generating && !correcting && !editorBusy) {
       setElapsed(0)
       return undefined
     }
     setElapsed(0)
     const id = window.setInterval(() => setElapsed((value) => value + 1), 1000)
     return () => window.clearInterval(id)
-  }, [generating, correcting])
+  }, [generating, correcting, editorBusy])
 
   /* ---------------------------- Handlers -------------------------------- */
   const runValidateKey = useCallback(
@@ -2214,6 +2391,71 @@ export default function MainDashboard({
   return (
     <>
       <main className="relative mx-auto w-full max-w-[1600px] space-y-4 px-4 pt-5 pb-12">
+        {settings.mode === 'editor' ? (
+          <section className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-3 py-2">
+              <p className="flex items-center gap-1.5 text-[11px] font-semibold text-cyan-200">
+                <PencilLine className="size-3.5" />
+                Modo editor
+                <span className="font-normal text-slate-400">
+                  · edite uma imagem enviada como novo frame
+                </span>
+              </p>
+              <button
+                type="button"
+                onClick={() => handleSettingsChange({ mode: 'advanced' })}
+                className="rounded-lg border border-white/10 px-2.5 py-1 text-[10px] font-semibold text-slate-300 transition hover:bg-white/5"
+              >
+                Voltar ao modo avançado
+              </button>
+            </div>
+
+            <EditorMode
+              provider={provider}
+              onProviderChange={handleProviderChange}
+              apiKey={apiKey}
+              onApiKeyChange={handleApiKeyChange}
+              onValidate={handleValidateKey}
+              status={keyStatus}
+              error={keyError}
+              models={models}
+              modelId={modelId}
+              onModelChange={handleModelChange}
+              modelsWarning={modelsWarning}
+              rememberKey={rememberKey}
+              onRememberKeyChange={handleRememberKeyChange}
+              onClearKey={handleClearSavedKey}
+              source={editorSource}
+              onFileSelected={handleEditorFileSelected}
+              onClearSource={handleEditorClearSource}
+              prompt={editorPrompt}
+              onPromptChange={setEditorPrompt}
+              onApply={handleEditorApply}
+              busy={editorBusy}
+              elapsed={elapsed}
+              result={editorResult}
+              error={editorError}
+              onDownloadResult={handleEditorDownload}
+              onUseResultAsSource={handleEditorUseResult}
+              onClearResult={handleEditorClearResult}
+              canApply={canEditorApply}
+              hint={editorHint}
+            />
+
+            <p className="flex items-start gap-2 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5 text-[10px] leading-relaxed text-slate-500">
+              <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-emerald-400/80" />
+              <span>
+                <strong className="font-semibold text-slate-300">
+                  Privacidade:
+                </strong>{' '}
+                nada é salvo nos servidores do app. A imagem enviada e o
+                resultado ficam apenas neste navegador e podem ser removidos em{' '}
+                <strong className="text-slate-300">Configurações</strong>.
+              </span>
+            </p>
+          </section>
+        ) : (
+          <>
         {settings.mode === 'simple' && (
           <p className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[10px] leading-relaxed text-amber-200">
             <strong className="font-semibold">Modo simples em desenvolvimento:</strong>{' '}
@@ -2381,6 +2623,8 @@ export default function MainDashboard({
             </span>
           </p>
         </section>
+          </>
+        )}
       </main>
 
       <LogsPage

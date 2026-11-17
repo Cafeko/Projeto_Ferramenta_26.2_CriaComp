@@ -39,7 +39,10 @@ export function loadAppSettings() {
     if (!data || typeof data !== 'object') return { ...DEFAULT_APP_SETTINGS }
     return {
       saveSession: data.saveSession !== false,
-      mode: data.mode === 'simple' ? 'simple' : 'advanced',
+      mode:
+        data.mode === 'simple' || data.mode === 'editor'
+          ? data.mode
+          : 'advanced',
       showMetrics: data.showMetrics !== false,
     }
   } catch {
@@ -56,7 +59,10 @@ export function saveAppSettings(settings) {
         version: APP_SETTINGS_VERSION,
         data: {
           saveSession: settings.saveSession !== false,
-          mode: settings.mode === 'simple' ? 'simple' : 'advanced',
+          mode:
+            settings.mode === 'simple' || settings.mode === 'editor'
+              ? settings.mode
+              : 'advanced',
           showMetrics: settings.showMetrics !== false,
         },
       }),
@@ -77,6 +83,8 @@ export const LOCAL_IMAGE_KEYS = {
   style: 'style',
   appearance: 'appearance',
   generated: 'generated',
+  editorSource: 'editor-source',
+  editorResult: 'editor-result',
 }
 
 /**
@@ -127,6 +135,8 @@ export function loadWorkspaceSettings() {
         data.lastGeneration && typeof data.lastGeneration === 'object'
           ? data.lastGeneration
           : null,
+      editorPrompt:
+        typeof data.editorPrompt === 'string' ? data.editorPrompt : '',
     }
   } catch {
     return null

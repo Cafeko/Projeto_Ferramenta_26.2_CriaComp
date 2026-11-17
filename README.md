@@ -437,9 +437,29 @@ navegador em `spritetransfer:settings`):
 - **Limpar dados salvos:** apaga somente esses dados da sessão (imagens, textos,
   chaves e resultado). Pede confirmação e **não** toca nos logs de requisições,
   que só são apagados na página de logs.
-- **Modo avançado / simples:** o simples ainda está em desenvolvimento; ao
-  selecioná-lo, um aviso aparece e a interface avançada continua ativa.
+- **Modo avançado / editor / simples:** o **editor** troca a interface pelo
+  modo de edição (ver abaixo); o **simples** ainda está em desenvolvimento e
+  mantém a interface avançada com um aviso.
 - **Mostrar métricas no final:** liga/desliga o painel de métricas do rodapé.
+
+### Modo editor
+
+Ao escolher **Modo editor** em Configurações, o gerador dá lugar a uma tela
+mínima de edição:
+
+- **Imagem para editar:** envie qualquer imagem (frame, sprite ou arte) por
+  arrastar/soltar ou clique. Ela é a fonte de verdade da edição.
+- **Instrução de edição:** descreva apenas o que deve mudar. O botão
+  `[ APLICAR EDIÇÃO ]` envia a imagem + a instrução como correção de um único
+  frame (sem referência de movimento e sem grade).
+- **Original / Novo frame:** o resultado aparece como **novo frame**, com
+  **Baixar PNG**, **Usar como base** (encadeia outra edição a partir do
+  resultado) e **Limpar resultado**.
+- O modo editor usa a mesma configuração de API e grava os logs como tipo
+  **Edição**. A imagem enviada e o resultado também entram na sessão salva.
+
+Para voltar, use o atalho **Voltar ao modo avançado** no topo do editor ou troque
+em Configurações.
 
 ### Logs e métricas
 
@@ -466,7 +486,8 @@ apenas no navegador em uso:
   (`spritetransfer:settings`) e histórico de logs
   (`spritetransfer:usage-history`, últimas 100 requisições, sem imagens).
 - **IndexedDB** (`spritetransfer-local`) — imagens de referência de pose, estilo
-  e aparência, além do último spritesheet gerado, guardadas como Blob.
+  e aparência, o último spritesheet gerado, e a imagem/resultado do modo editor,
+  guardadas como Blob.
 
 Ao abrir o site, a sessão anterior é restaurada automaticamente (configurações e
 imagens), desde que **Salvar e restaurar a sessão** esteja ligado em

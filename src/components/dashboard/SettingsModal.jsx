@@ -60,10 +60,10 @@ const SAVED_ITEMS = [
  *
  * @param {{
  *   open: boolean,
- *   settings: { saveSession: boolean, mode: 'advanced' | 'simple', showMetrics: boolean },
+ *   settings: { saveSession: boolean, mode: 'advanced' | 'simple' | 'editor', showMetrics: boolean },
  *   onChange: (patch: {
  *     saveSession?: boolean,
- *     mode?: 'advanced' | 'simple',
+ *     mode?: 'advanced' | 'simple' | 'editor',
  *     showMetrics?: boolean,
  *   }) => void,
  *   onClearSession: () => void | Promise<void>,
@@ -231,12 +231,17 @@ export default function SettingsModal({
               Interface
             </h3>
 
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2 sm:grid-cols-3">
               {[
                 {
                   id: 'advanced',
                   label: 'Modo avançado',
-                  hint: 'Todos os painéis e ajustes (atual).',
+                  hint: 'Todos os painéis.',
+                },
+                {
+                  id: 'editor',
+                  label: 'Modo editor',
+                  hint: 'Edita uma imagem enviada.',
                 },
                 {
                   id: 'simple',

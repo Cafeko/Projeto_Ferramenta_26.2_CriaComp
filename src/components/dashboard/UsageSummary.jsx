@@ -16,6 +16,7 @@ const KIND_LABELS = {
   generation: 'Geração',
   single: 'Correção individual',
   batch: 'Correção em lote',
+  edit: 'Edição',
 }
 
 const PROVIDER_LABELS = Object.fromEntries(
