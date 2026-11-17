@@ -459,8 +459,10 @@ Na primeira visita, a tela é a **escolha de modo**, com três cartões
 entrada. O cartão do modo usado por último aparece como **“Continuar neste
 modo”**.
 
-A **página em que você estava é lembrada** (spritetransfer:page): se estava
-em um modo, o app reabre direto nele; se estava na escolha de modo, reabre nela.
+Com **Salvar e restaurar a sessão** ligado, a **página em que você estava é
+lembrada** (spritetransfer:page): se estava em um modo, o app reabre direto
+nele; se estava na escolha de modo, reabre nela. Com a sessão desligada, nada é
+gravado e o app sempre abre na escolha de modo.
 O botão **Início** no cabeçalho volta à escolha a qualquer momento. **Limpar
 dados salvos** também volta para a página inicial.
 

@@ -17,8 +17,21 @@ const APP_SETTINGS_VERSION = 1
 
 const PAGE_KEY = 'spritetransfer:page'
 
+/** A persistência da sessão está ligada? (padrão: ligada) */
+function sessionSavingEnabled() {
+  try {
+    const raw = window.localStorage.getItem(APP_SETTINGS_KEY)
+    if (!raw) return true
+    const parsed = JSON.parse(raw)
+    return parsed?.data?.saveSession !== false
+  } catch {
+    return true
+  }
+}
+
 /** Página em que o usuário estava: 'dashboard' (modo) ou 'home' (escolha). */
 export function loadLastPage() {
+  if (!sessionSavingEnabled()) return 'home'
   try {
     return window.localStorage.getItem(PAGE_KEY) === 'dashboard'
       ? 'dashboard'
@@ -30,7 +43,12 @@ export function loadLastPage() {
 
 export function saveLastPage(page) {
   try {
-    window.localStorage.setItem(PAGE_KEY, page === 'dashboard' ? 'dashboard' : 'home')
+    // Com a sessão desligada (ou na própria página inicial) nada é gravado.
+    if (page !== 'dashboard' || !sessionSavingEnabled()) {
+      window.localStorage.removeItem(PAGE_KEY)
+      return true
+    }
+    window.localStorage.setItem(PAGE_KEY, 'dashboard')
     return true
   } catch {
     return false
@@ -77,6 +95,10 @@ export function loadAppSettings() {
 /** Salva as preferências da interface (ignora falhas de cota/modo privado). */
 export function saveAppSettings(settings) {
   try {
+    // Desligar a sessão também apaga a página lembrada.
+    if (settings.saveSession === false) {
+      window.localStorage.removeItem(PAGE_KEY)
+    }
     window.localStorage.setItem(
       APP_SETTINGS_KEY,
       JSON.stringify({
