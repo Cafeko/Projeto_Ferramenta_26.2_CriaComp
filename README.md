@@ -398,18 +398,36 @@ interface é organizada em **quatro faixas horizontais** (empilham no celular):
   aplicada à spritesheet inteira, enviada como uma única imagem em
   `previous_generated_images` para preservar o contexto.
 
-### Faixa 4 — resumo e privacidade
-- **Resumo da IA:** ocupa a largura toda e mostra os totais gerais (gasto,
-  chamadas com sucessos/erros, tokens, tempo, qualidade média e imagens geradas),
-  os dados da **imagem gerada mais recentemente** (modelo, API, tipo, data/hora,
-  duração, tokens, custo e imagens) e o card **Qualidade do resultado** com a
-  nota `/100`, o selo da faixa (Ótima/Boa/Regular/Fraca) e as barras de
-  **fidelidade de pose**, **consistência do personagem** e **pixel art
-  utilizável** (com paleta dominante e tipo de fundo), além do atalho para a
-  página de logs.
-- **Privacidade:** aviso em faixa própria, abaixo do resumo, informando que nada
-  é salvo nos servidores do app — chave, configurações, textos e imagens ficam
-  apenas no navegador.
+### Faixa 4 — métricas e privacidade
+- **Métricas** (pode ser ocultada em Configurações): ocupa a largura toda, com a
+  **Qualidade do resultado** à esquerda (nota `/100`, selo Ótima/Boa/Regular/Fraca
+  e barras de fidelidade de pose, consistência e pixel art, com paleta dominante e
+  tipo de fundo), os dados da **imagem mais recente** no meio (modelo, API, tipo,
+  data/hora e blocos de tempo de resposta, tempo no servidor, tokens, custo e
+  quantidade de imagens) e os **totais** à direita (gasto, chamadas, tokens, tempo,
+  qualidade média e imagens geradas), com atalho para os logs.
+- Ao **remover a imagem gerada**, os dados da imagem mais recente e a nota de
+  qualidade são limpos — os logs continuam intactos.
+- **Privacidade:** aviso em faixa própria, abaixo das métricas, informando que
+  nada é salvo nos servidores do app — chave, configurações, textos e imagens
+  ficam apenas no navegador.
+
+### ⚙️ Configurações
+
+O botão **Configurações** no cabeçalho abre o menu de preferências (salvas neste
+navegador em `spritetransfer:settings`):
+
+- **Salvar e restaurar a sessão** (ligado por padrão): guarda as imagens de
+  referência (movimento, aparência e estilo), os textos de aparência e estilo, as
+  chaves de API e a imagem gerada. Ao reabrir, tudo volta como estava. Desligado,
+  nada novo é salvo nem restaurado. Ao remover qualquer item manualmente, ele
+  deixa de ser restaurado.
+- **Limpar dados salvos:** apaga somente esses dados da sessão (imagens, textos,
+  chaves e resultado). Pede confirmação e **não** toca nos logs de requisições,
+  que só são apagados na página de logs.
+- **Modo avançado / simples:** o simples ainda está em desenvolvimento; ao
+  selecioná-lo, um aviso aparece e a interface avançada continua ativa.
+- **Mostrar métricas no final:** liga/desliga o painel de métricas do rodapé.
 
 ### Logs e métricas
 
@@ -432,17 +450,18 @@ apenas no navegador em uso:
 
 - **`localStorage`** — chave de API por provedor e modelo preferido
   (`spritetransfer:api-config`), configurações e textos da sessão
-  (`spritetransfer:workspace`) e histórico de logs
+  (`spritetransfer:workspace`), preferências da interface
+  (`spritetransfer:settings`) e histórico de logs
   (`spritetransfer:usage-history`, últimas 100 requisições, sem imagens).
 - **IndexedDB** (`spritetransfer-local`) — imagens de referência de pose, estilo
   e aparência, além do último spritesheet gerado, guardadas como Blob.
 
 Ao abrir o site, a sessão anterior é restaurada automaticamente (configurações e
-imagens). O escopo é a origem + navegador + perfil: **não** aparece em outro
+imagens), desde que **Salvar e restaurar a sessão** esteja ligado em
+Configurações. O escopo é a origem + navegador + perfil: **não** aparece em outro
 dispositivo ou navegador, não é sincronizado e some ao limpar os dados do site.
-Para apagar as imagens salvas (IndexedDB), limpe os dados do site pelas
-configurações do navegador. Desmarcar “Salvar chave neste navegador” mantém a
-chave só na memória da aba.
+Para apagar só o que o app salvou, use **Configurações → Limpar dados salvos**.
+Desmarcar “Salvar chave neste navegador” mantém a chave só na memória da aba.
 
 Os frames e as referências são normalizados para Data URLs antes de ir ao
 backend, e o cliente bloqueia o envio quando o Base64 passa do limite da Vercel.

@@ -17,6 +17,7 @@ import GridPanel from './dashboard/GridPanel'
 import LogsPage from './dashboard/LogsPage'
 import PreviewPanel from './dashboard/PreviewPanel'
 import ReferencePanel from './dashboard/ReferencePanel'
+import SettingsModal from './dashboard/SettingsModal'
 import UsageSummary from './dashboard/UsageSummary'
 import {
   DEFAULT_PROVIDER,
@@ -29,10 +30,14 @@ import {
 } from '../lib/api'
 import {
   LOCAL_IMAGE_KEYS,
+  clearLocalImages,
+  clearWorkspaceSettings,
   deleteLocalImages,
   getLocalImages,
+  loadAppSettings,
   loadWorkspaceSettings,
   putLocalImages,
+  saveAppSettings,
   saveWorkspaceSettings,
 } from '../lib/localStore'
 import {
@@ -224,7 +229,15 @@ const API_CONFIG_STORAGE_KEY = 'spritetransfer:api-config'
 const MAX_USAGE_HISTORY = 100
 
 /** Lê configuração de API salva (provedor, chaves e modelos preferidos). */
-function loadSavedApiConfig() {
+function loadSavedApiConfig(enabled = true) {
+  if (!enabled) {
+    return {
+      provider: DEFAULT_PROVIDER,
+      rememberKey: true,
+      keysByProvider: {},
+      modelsByProvider: {},
+    }
+  }
   try {
     const raw = window.localStorage.getItem(API_CONFIG_STORAGE_KEY)
     if (!raw) {
@@ -290,12 +303,22 @@ export default function MainDashboard({
   logsOpen = false,
   onCloseLogs,
   onOpenLogs,
+  settingsOpen = false,
+  onCloseSettings,
 }) {
+  /* ---------------------------- Configurações ---------------------------- */
+  const [initialSettings] = useState(loadAppSettings)
+  const [settings, setSettings] = useState(initialSettings)
+  const saveSession = settings.saveSession
+  const [clearingSession, setClearingSession] = useState(false)
+
   /* ------------------------------- BYOK ---------------------------------- */
-  const [initialApiConfig] = useState(loadSavedApiConfig)
+  const [initialApiConfig] = useState(() => loadSavedApiConfig(saveSession))
   // Configurações e textos da última sessão (localStorage). As imagens são
   // restauradas em seguida, de forma assíncrona, do IndexedDB.
-  const [initialWorkspace] = useState(loadWorkspaceSettings)
+  const [initialWorkspace] = useState(() =>
+    saveSession ? loadWorkspaceSettings() : null,
+  )
   const [provider, setProvider] = useState(initialApiConfig.provider)
   const [rememberKey, setRememberKey] = useState(initialApiConfig.rememberKey)
   const [savedKeys, setSavedKeys] = useState(initialApiConfig.keysByProvider)
@@ -452,6 +475,11 @@ export default function MainDashboard({
   // de API nunca entra aqui.
   const [usageHistory, setUsageHistory] = useState(loadUsageHistory)
   const usageId = useRef(usageHistory.reduce((max, entry) => Math.max(max, entry.id), 0))
+  // Dados da última geração que devolveu imagem, para o painel de métricas.
+  // Independente dos logs: é limpo ao remover o resultado gerado.
+  const [lastGeneration, setLastGeneration] = useState(
+    () => initialWorkspace?.lastGeneration ?? null,
+  )
 
   useEffect(() => {
     try {
@@ -507,6 +535,7 @@ export default function MainDashboard({
   // Se o localStorage estiver bloqueado, avisa uma vez em vez de falhar calado.
   const storageWarned = useRef(false)
   useEffect(() => {
+    if (!saveSession) return
     try {
       const payload = rememberKey
         ? {
@@ -533,7 +562,7 @@ export default function MainDashboard({
         )
       }
     }
-  }, [provider, rememberKey, savedKeys, savedModels, pushToast])
+  }, [provider, rememberKey, savedKeys, savedModels, saveSession, pushToast])
 
   /** Chama a API e registra a requisição (sucesso ou erro) no histórico. */
   const generateAndTrack = useCallback(
@@ -560,6 +589,15 @@ export default function MainDashboard({
         setUsageHistory((current) =>
           [...current, entry].slice(-MAX_USAGE_HISTORY),
         )
+        if (Array.isArray(result.images) && result.images.length > 0) {
+          setLastGeneration({
+            at: entry.at,
+            kind: entry.kind,
+            provider: entry.provider,
+            modelId: entry.modelId,
+            usage: entry.usage,
+          })
+        }
         return result
       } catch (error) {
         usageId.current += 1
@@ -597,10 +635,22 @@ export default function MainDashboard({
 
   const handleResetUsage = useCallback(() => setUsageHistory([]), [])
 
+  /* ------------------------- Preferências da interface ------------------- */
+  // Modo (avançado/simples), métricas no rodapé e o interruptor geral de
+  // persistência. Ficam no localStorage, separados dos dados da sessão.
+  useEffect(() => {
+    saveAppSettings(settings)
+  }, [settings])
+
+  const handleSettingsChange = useCallback((patch) => {
+    setSettings((current) => ({ ...current, ...patch }))
+  }, [])
+
   /* ---------------- Persistência local (só neste dispositivo) ----------- */
   // Configurações e textos: pequenos, vão para o localStorage a cada mudança.
   // Não inclui chave de API (tem fluxo próprio em api-config).
   useEffect(() => {
+    if (!saveSession) return
     const saved = saveWorkspaceSettings({
       columns,
       rows,
@@ -613,6 +663,7 @@ export default function MainDashboard({
       generationColumns:
         Number.parseInt(generationColumns, 10) || null,
       generationRows: Number.parseInt(generationRows, 10) || null,
+      lastGeneration,
     })
     if (!saved) warnLocalSaveFailure('salvar as configurações da sessão')
   }, [
@@ -626,6 +677,8 @@ export default function MainDashboard({
     artStyle,
     generationColumns,
     generationRows,
+    lastGeneration,
+    saveSession,
     warnLocalSaveFailure,
   ])
 
@@ -634,6 +687,7 @@ export default function MainDashboard({
   // Depois de uma correção individual, o estado recebe a folha INTEIRA remontada
   // (novo array), então o que fica salvo é a spritesheet completa, não o frame.
   useEffect(() => {
+    if (!saveSession) return
     if (generatedSheets.length === 0) return
     if (lastSavedSheetsRef.current === generatedSheets) return
     lastSavedSheetsRef.current = generatedSheets
@@ -643,12 +697,14 @@ export default function MainDashboard({
     ).then((ok) => {
       if (!ok) warnLocalSaveFailure('salvar o resultado gerado')
     })
-  }, [generatedSheets, warnLocalSaveFailure])
+  }, [generatedSheets, saveSession, warnLocalSaveFailure])
 
   // Restaura, uma única vez ao abrir, as imagens salvas neste navegador.
   useEffect(() => {
     if (restoreLocalRef.current) return
     restoreLocalRef.current = true
+    // Sem "salvar sessão", nada é restaurado (nem ao religar no meio da sessão).
+    if (!saveSession) return undefined
 
     ;(async () => {
       try {
@@ -704,7 +760,7 @@ export default function MainDashboard({
         )
       }
     })()
-  }, [pushToast])
+  }, [pushToast, saveSession])
 
   const handleConfirmRemoveGenerated = useCallback(async () => {
     setRemoveDialogOpen(false)
@@ -716,6 +772,7 @@ export default function MainDashboard({
     setModalOpen(false)
     setModalCandidateFrame(null)
     setModalPreviewFrame(null)
+    setLastGeneration(null)
     lastSavedSheetsRef.current = null
 
     const ok = await deleteLocalImages(LOCAL_IMAGE_KEYS.generated)
@@ -734,6 +791,55 @@ export default function MainDashboard({
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [removeDialogOpen])
+
+  /**
+   * Apaga os dados da sessão salvos neste navegador: imagens de entrada,
+   * textos, chaves de API e a imagem gerada. Os logs de requisições ficam
+   * intactos (só são apagados na página de logs).
+   */
+  const handleClearSession = useCallback(async () => {
+    setClearingSession(true)
+    try {
+      const ok = await clearLocalImages()
+      if (!ok) {
+        warnLocalSaveFailure('apagar os dados salvos')
+        return
+      }
+      clearWorkspaceSettings()
+      try {
+        window.localStorage.removeItem(API_CONFIG_STORAGE_KEY)
+      } catch {
+        // Armazenamento bloqueado: nada a remover.
+      }
+
+      lastSavedSheetsRef.current = null
+      setReference(null)
+      setReferenceFrames([])
+      setReferenceError('')
+      setStyleReference(null)
+      setAppearanceReference(null)
+      setAppearance('')
+      setArtStyle('')
+      setGeneratedSheets([])
+      setFrames([])
+      setSlicingResult(false)
+      setQuality(null)
+      setLastGeneration(null)
+      setApiKey('')
+      setSavedKeys({})
+      setSavedModels({})
+      setModels([])
+      setModelId('')
+      setKeyStatus('idle')
+      setKeyError('')
+      pushToast(
+        'Dados salvos neste dispositivo foram apagados. Os logs foram mantidos.',
+        'info',
+      )
+    } finally {
+      setClearingSession(false)
+    }
+  }, [pushToast, warnLocalSaveFailure])
 
   /* ------------------------ Métrica de qualidade ------------------------ */
   // Avaliada no navegador sempre que os frames exibidos mudam (geração,
@@ -754,6 +860,19 @@ export default function MainDashboard({
       .then((report) => {
         if (cancelled || !report) return
         setQuality(report)
+        setLastGeneration((current) =>
+          current
+            ? {
+                ...current,
+                quality: {
+                  score: report.score,
+                  pose: report.pose,
+                  consistency: report.consistency,
+                  pixelArt: report.pixelArt,
+                },
+              }
+            : current,
+        )
         setUsageHistory((current) => {
           if (current.length === 0) return current
           const last = current[current.length - 1]
@@ -1192,20 +1311,22 @@ export default function MainDashboard({
           kind: 'file',
         })
         // Mantém a referência salva neste navegador para a próxima visita.
-        void putLocalImages(LOCAL_IMAGE_KEYS.pose, [
-          {
-            dataUrl: image.dataUrl,
-            meta: {
-              width: image.width,
-              height: image.height,
-              name: file.name,
-              size: file.size,
-              kind: 'file',
+        if (saveSession) {
+          void putLocalImages(LOCAL_IMAGE_KEYS.pose, [
+            {
+              dataUrl: image.dataUrl,
+              meta: {
+                width: image.width,
+                height: image.height,
+                name: file.name,
+                size: file.size,
+                kind: 'file',
+              },
             },
-          },
-        ]).then((ok) => {
-          if (!ok) warnLocalSaveFailure('salvar a referência de pose')
-        })
+          ]).then((ok) => {
+            if (!ok) warnLocalSaveFailure('salvar a referência de pose')
+          })
+        }
         setColumns(String(detected.columns))
         setRows(String(detected.rows))
         setAutoSlice(total > 1)
@@ -1239,7 +1360,7 @@ export default function MainDashboard({
         pushToast(describeApiError(error), 'error')
       }
     },
-    [pushToast, warnLocalSaveFailure],
+    [pushToast, saveSession, warnLocalSaveFailure],
   )
 
   const handleClearReference = useCallback(() => {
@@ -1267,24 +1388,26 @@ export default function MainDashboard({
           height: image.height,
           name: file.name,
         })
-        void putLocalImages(LOCAL_IMAGE_KEYS.style, [
-          {
-            dataUrl: image.dataUrl,
-            meta: {
-              width: image.width,
-              height: image.height,
-              name: file.name,
+        if (saveSession) {
+          void putLocalImages(LOCAL_IMAGE_KEYS.style, [
+            {
+              dataUrl: image.dataUrl,
+              meta: {
+                width: image.width,
+                height: image.height,
+                name: file.name,
+              },
             },
-          },
-        ]).then((ok) => {
-          if (!ok) warnLocalSaveFailure('salvar a referência de estilo')
-        })
+          ]).then((ok) => {
+            if (!ok) warnLocalSaveFailure('salvar a referência de estilo')
+          })
+        }
         pushToast('Imagem de referência de estilo carregada.', 'success')
       } catch (error) {
         pushToast(describeApiError(error), 'error')
       }
     },
-    [pushToast, warnLocalSaveFailure],
+    [pushToast, saveSession, warnLocalSaveFailure],
   )
 
   const handleClearStyleReference = useCallback(() => {
@@ -1304,24 +1427,26 @@ export default function MainDashboard({
           height: image.height,
           name: file.name,
         })
-        void putLocalImages(LOCAL_IMAGE_KEYS.appearance, [
-          {
-            dataUrl: image.dataUrl,
-            meta: {
-              width: image.width,
-              height: image.height,
-              name: file.name,
+        if (saveSession) {
+          void putLocalImages(LOCAL_IMAGE_KEYS.appearance, [
+            {
+              dataUrl: image.dataUrl,
+              meta: {
+                width: image.width,
+                height: image.height,
+                name: file.name,
+              },
             },
-          },
-        ]).then((ok) => {
-          if (!ok) warnLocalSaveFailure('salvar a referência de aparência')
-        })
+          ]).then((ok) => {
+            if (!ok) warnLocalSaveFailure('salvar a referência de aparência')
+          })
+        }
         pushToast('Imagem de referência de aparência carregada.', 'success')
       } catch (error) {
         pushToast(describeApiError(error), 'error')
       }
     },
-    [pushToast, warnLocalSaveFailure],
+    [pushToast, saveSession, warnLocalSaveFailure],
   )
 
   const handleClearAppearanceReference = useCallback(() => {
@@ -2111,6 +2236,14 @@ export default function MainDashboard({
   return (
     <>
       <main className="relative mx-auto w-full max-w-[1600px] space-y-4 px-4 pt-5 pb-12">
+        {settings.mode === 'simple' && (
+          <p className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[10px] leading-relaxed text-amber-200">
+            <strong className="font-semibold">Modo simples em desenvolvimento:</strong>{' '}
+            por enquanto a interface avançada continua ativa. Você pode voltar ao
+            modo avançado em Configurações.
+          </p>
+        )}
+
         {/* Faixa 1 — API + inputs, ocupando a largura toda */}
         <section
           aria-label="Configuração e referências"
@@ -2244,14 +2377,17 @@ export default function MainDashboard({
           />
         </section>
 
-        {/* Faixa 4 — resumo de métricas, custos e tempo + aviso de privacidade */}
-        <section aria-label="Resumo de métricas" className="space-y-4">
-          <UsageSummary
-            history={usageHistory}
-            quality={quality}
-            onEditFrame={frames.length > 1 ? handleEditFrame : null}
-            onOpenLogs={onOpenLogs ?? (() => {})}
-          />
+        {/* Faixa 4 — métricas e aviso de privacidade */}
+        <section aria-label="Métricas e privacidade" className="space-y-4">
+          {settings.showMetrics && (
+            <UsageSummary
+              history={usageHistory}
+              latest={lastGeneration}
+              quality={quality}
+              onEditFrame={frames.length > 1 ? handleEditFrame : null}
+              onOpenLogs={onOpenLogs ?? (() => {})}
+            />
+          )}
 
           <p className="flex items-start gap-2 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5 text-[10px] leading-relaxed text-slate-500">
             <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-emerald-400/80" />
@@ -2274,6 +2410,15 @@ export default function MainDashboard({
         history={usageHistory}
         onClose={onCloseLogs}
         onClear={handleResetUsage}
+      />
+
+      <SettingsModal
+        open={settingsOpen}
+        settings={settings}
+        onChange={handleSettingsChange}
+        onClearSession={handleClearSession}
+        clearing={clearingSession}
+        onClose={onCloseSettings}
       />
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />

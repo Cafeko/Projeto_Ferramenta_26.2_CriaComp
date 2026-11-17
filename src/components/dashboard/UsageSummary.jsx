@@ -1,4 +1,12 @@
-import { ArrowRight, Gauge, ImageIcon } from 'lucide-react'
+import {
+  ArrowRight,
+  Clock,
+  Coins,
+  Gauge,
+  Hash,
+  ImageIcon,
+  Server,
+} from 'lucide-react'
 
 import { PROVIDERS, formatDuration, formatUsd } from '../../lib/api'
 import { Card, Pill } from './ui'
@@ -38,18 +46,21 @@ function CompactMetric({ label, value, hint }) {
   )
 }
 
-function DetailRow({ label, value }) {
+function Stat({ icon: Icon, label, value }) {
   return (
-    <div className="flex items-baseline justify-between gap-2 border-b border-white/5 py-1 last:border-b-0">
-      <span className="text-[10px] text-slate-500">{label}</span>
-      <span className="text-right font-mono text-[11px] text-slate-200">
+    <div className="min-w-0 rounded-md border border-white/5 bg-white/[0.02] px-2 py-1.5">
+      <p className="flex items-center gap-1 text-[9px] font-semibold tracking-wider text-slate-500 uppercase">
+        <Icon className="size-2.5" />
+        {label}
+      </p>
+      <p className="mt-0.5 truncate font-mono text-[11px] text-slate-200">
         {value || '—'}
-      </span>
+      </p>
     </div>
   )
 }
 
-/** Última chamada que devolveu uma imagem (ou, na falta, a última bem-sucedida). */
+/** Última chamada que devolveu uma imagem (usado só como reserva). */
 function pickLatestGeneration(history) {
   for (let index = history.length - 1; index >= 0; index -= 1) {
     const entry = history[index]
@@ -65,11 +76,11 @@ function pickLatestGeneration(history) {
 }
 
 /**
- * Resumo compacto das métricas de IA, com os totais gerais, os dados da imagem
- * gerada mais recentemente e a nota de qualidade do resultado exibido.
+ * Métricas de IA: qualidade do resultado, dados da imagem mais recente e totais.
  *
  * @param {{
  *   history: Array<Record<string, any>>,
+ *   latest?: Record<string, any> | null,
  *   quality?: import('../../utils/qualityMetrics').QualityReport | null,
  *   onEditFrame?: ((index: number) => void) | null,
  *   onOpenLogs: () => void,
@@ -77,6 +88,7 @@ function pickLatestGeneration(history) {
  */
 export default function UsageSummary({
   history,
+  latest,
   quality = null,
   onEditFrame = null,
   onOpenLogs,
@@ -123,7 +135,7 @@ export default function UsageSummary({
     },
   )
 
-  const last = pickLatestGeneration(history)
+  const last = latest === undefined ? pickLatestGeneration(history) : latest
   const averageQuality =
     totals.rated > 0 ? Math.round(totals.qualitySum / totals.rated) : null
 
@@ -141,8 +153,8 @@ export default function UsageSummary({
 
   return (
     <Card
-      title="Resumo da IA"
-      subtitle="Totais, imagem mais recente e qualidade do resultado"
+      title="Métricas"
+      subtitle="Qualidade, imagem recente e totais"
       icon={Gauge}
       bodyClassName="p-3"
       help={
@@ -152,24 +164,92 @@ export default function UsageSummary({
             {history.length === 1 ? '' : 's'} registradas neste dispositivo.
           </p>
           <p>
-            Gasto, tokens e tempo somam as chamadas com valor informado ou
-            estimado. A qualidade média usa apenas as chamadas avaliadas.
-          </p>
-          <p>
-            A coluna do meio mostra a última chamada que devolveu uma imagem e a
-            nota de qualidade é a da imagem exibida na visualização.
+            À esquerda fica a <strong>qualidade do resultado</strong> exibido na
+            visualização; no meio, os dados da <strong>imagem mais recente</strong>{' '}
+            (limpos ao remover essa imagem); à direita, os <strong>totais</strong>{' '}
+            de gasto, tokens e tempo.
           </p>
           <p>
             A tabela completa, com filtros e exportação, fica em{' '}
-            <strong>Atividade → Logs</strong>.
+            <strong>Atividade → Logs</strong>. Você pode ocultar este painel em{' '}
+            <strong>Configurações</strong>.
           </p>
         </>
       }
     >
-      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,330px)]">
+      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(0,330px)_minmax(0,1fr)_minmax(0,1fr)]">
         <div>
+          <QualityCard quality={qualityForCard} onEditFrame={onEditFrame} />
+        </div>
+
+        <div className="rounded-lg border border-white/5 bg-black/20 p-2.5">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 text-[9px] font-semibold tracking-wider text-slate-500 uppercase">
+              <ImageIcon className="size-3" />
+              Imagem mais recente
+            </p>
+            {last && <Pill tone="green">Gerada</Pill>}
+          </div>
+
+          {!last ? (
+            <p className="py-4 text-center text-[11px] leading-relaxed text-slate-500">
+              Nenhuma imagem gerada. Ao remover o resultado, estes dados também
+              são limpos.
+            </p>
+          ) : (
+            <>
+              <p
+                className="truncate text-[12px] font-semibold text-slate-100"
+                title={last.modelId}
+              >
+                {last.modelId || 'Modelo não informado'}
+              </p>
+              <p className="truncate text-[10px] text-slate-500">
+                {PROVIDER_LABELS[last.provider] ||
+                  last.provider ||
+                  'API não informada'}{' '}
+                · {KIND_LABELS[last.kind] || last.kind || '—'} ·{' '}
+                {formatDateTime(last.at)}
+              </p>
+
+              <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                <Stat
+                  icon={Clock}
+                  label="Resposta"
+                  value={formatDuration(last.usage?.clientElapsedMs)}
+                />
+                <Stat
+                  icon={Server}
+                  label="Servidor"
+                  value={formatDuration(last.usage?.serverElapsedMs)}
+                />
+                <Stat
+                  icon={Hash}
+                  label="Tokens"
+                  value={formatTokens(last.usage?.totalTokens)}
+                />
+                <Stat
+                  icon={Coins}
+                  label="Custo"
+                  value={formatUsd(last.usage?.costUsd)}
+                />
+                <Stat
+                  icon={ImageIcon}
+                  label="Imagens"
+                  value={
+                    typeof last.usage?.imageCount === 'number'
+                      ? String(last.usage.imageCount)
+                      : '—'
+                  }
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="lg:col-span-2 xl:col-span-1">
           <p className="mb-1.5 text-[9px] font-semibold tracking-wider text-slate-500 uppercase">
-            Totais gerais
+            Totais
           </p>
           {totals.calls === 0 ? (
             <p className="text-[11px] leading-relaxed text-slate-500">
@@ -226,75 +306,6 @@ export default function UsageSummary({
               />
             </div>
           )}
-        </div>
-
-        <div className="rounded-lg border border-white/5 bg-black/20 p-2.5">
-          <div className="mb-1.5 flex items-center justify-between gap-2">
-            <p className="flex items-center gap-1.5 text-[9px] font-semibold tracking-wider text-slate-500 uppercase">
-              <ImageIcon className="size-3" />
-              Imagem mais recente
-            </p>
-            {last && (
-              <Pill tone={last.status === 'error' ? 'red' : 'green'}>
-                {last.status === 'error' ? 'Erro' : 'Sucesso'}
-              </Pill>
-            )}
-          </div>
-
-          {!last ? (
-            <p className="py-4 text-center text-[11px] text-slate-500">
-              Nenhuma geração bem-sucedida registrada.
-            </p>
-          ) : (
-            <>
-              <div className="mb-1.5 min-w-0">
-                <p
-                  className="truncate text-[12px] font-semibold text-slate-100"
-                  title={last.modelId}
-                >
-                  {last.modelId || 'Modelo não informado'}
-                </p>
-                <p className="truncate text-[10px] text-slate-500">
-                  {PROVIDER_LABELS[last.provider] ||
-                    last.provider ||
-                    'API não informada'}{' '}
-                  · {KIND_LABELS[last.kind] || last.kind || '—'} ·{' '}
-                  {formatDateTime(last.at)}
-                </p>
-              </div>
-
-              <div className="grid gap-x-4 sm:grid-cols-2">
-                <DetailRow
-                  label="Tempo de resposta"
-                  value={formatDuration(last.usage?.clientElapsedMs)}
-                />
-                <DetailRow
-                  label="Tempo no servidor"
-                  value={formatDuration(last.usage?.serverElapsedMs)}
-                />
-                <DetailRow
-                  label="Tokens"
-                  value={formatTokens(last.usage?.totalTokens)}
-                />
-                <DetailRow
-                  label="Custo"
-                  value={formatUsd(last.usage?.costUsd)}
-                />
-                <DetailRow
-                  label="Imagens"
-                  value={
-                    typeof last.usage?.imageCount === 'number'
-                      ? last.usage.imageCount
-                      : '—'
-                  }
-                />
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="lg:col-span-2 xl:col-span-1">
-          <QualityCard quality={qualityForCard} onEditFrame={onEditFrame} />
         </div>
       </div>
 

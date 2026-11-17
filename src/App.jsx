@@ -1,11 +1,19 @@
 import { useState } from 'react'
-import { BookOpen, FlaskConical, Gamepad2, History, ShieldCheck } from 'lucide-react'
+import {
+  BookOpen,
+  FlaskConical,
+  Gamepad2,
+  History,
+  Settings,
+  ShieldCheck,
+} from 'lucide-react'
 
 import { ErrorBoundary } from './components/ErrorBoundary'
 import MainDashboard from './components/MainDashboard'
 
 export default function App() {
   const [logsOpen, setLogsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   return (
     <div className="relative min-h-screen overflow-x-hidden">
@@ -52,6 +60,16 @@ export default function App() {
                 <span className="hidden sm:inline">Atividade</span>
               </button>
 
+              <button
+                type="button"
+                onClick={() => setSettingsOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:text-cyan-200"
+                title="Configurações"
+              >
+                <Settings className="size-3.5" />
+                <span className="hidden sm:inline">Configurações</span>
+              </button>
+
               <a
                 href="/laboratorio-api.html"
                 className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:text-cyan-200"
@@ -80,6 +98,8 @@ export default function App() {
             logsOpen={logsOpen}
             onCloseLogs={() => setLogsOpen(false)}
             onOpenLogs={() => setLogsOpen(true)}
+            settingsOpen={settingsOpen}
+            onCloseSettings={() => setSettingsOpen(false)}
           />
         </ErrorBoundary>
 

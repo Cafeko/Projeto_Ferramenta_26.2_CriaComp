@@ -12,6 +12,61 @@
 const WORKSPACE_KEY = 'spritetransfer:workspace'
 const WORKSPACE_VERSION = 1
 
+const APP_SETTINGS_KEY = 'spritetransfer:settings'
+const APP_SETTINGS_VERSION = 1
+
+/** Preferências da interface (não fazem parte dos dados da sessão). */
+export const DEFAULT_APP_SETTINGS = {
+  saveSession: true,
+  mode: 'advanced',
+  showMetrics: true,
+}
+
+/**
+ * Lê as preferências da interface.
+ *
+ * @returns {typeof DEFAULT_APP_SETTINGS}
+ */
+export function loadAppSettings() {
+  try {
+    const raw = window.localStorage.getItem(APP_SETTINGS_KEY)
+    if (!raw) return { ...DEFAULT_APP_SETTINGS }
+    const parsed = JSON.parse(raw)
+    if (!parsed || parsed.version !== APP_SETTINGS_VERSION) {
+      return { ...DEFAULT_APP_SETTINGS }
+    }
+    const data = parsed.data
+    if (!data || typeof data !== 'object') return { ...DEFAULT_APP_SETTINGS }
+    return {
+      saveSession: data.saveSession !== false,
+      mode: data.mode === 'simple' ? 'simple' : 'advanced',
+      showMetrics: data.showMetrics !== false,
+    }
+  } catch {
+    return { ...DEFAULT_APP_SETTINGS }
+  }
+}
+
+/** Salva as preferências da interface (ignora falhas de cota/modo privado). */
+export function saveAppSettings(settings) {
+  try {
+    window.localStorage.setItem(
+      APP_SETTINGS_KEY,
+      JSON.stringify({
+        version: APP_SETTINGS_VERSION,
+        data: {
+          saveSession: settings.saveSession !== false,
+          mode: settings.mode === 'simple' ? 'simple' : 'advanced',
+          showMetrics: settings.showMetrics !== false,
+        },
+      }),
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
 const DB_NAME = 'spritetransfer-local'
 const DB_VERSION = 1
 const STORE_NAME = 'images'
@@ -38,6 +93,7 @@ export const LOCAL_IMAGE_KEYS = {
  *   artStyle: string,
  *   generationColumns: number | null,
  *   generationRows: number | null,
+ *   lastGeneration: Record<string, unknown> | null,
  * } | null}
  */
 export function loadWorkspaceSettings() {
@@ -67,6 +123,10 @@ export function loadWorkspaceSettings() {
       generationRows: Number.isFinite(data.generationRows)
         ? Math.min(64, Math.max(1, Math.round(data.generationRows)))
         : null,
+      lastGeneration:
+        data.lastGeneration && typeof data.lastGeneration === 'object'
+          ? data.lastGeneration
+          : null,
     }
   } catch {
     return null
@@ -87,11 +147,19 @@ export function saveWorkspaceSettings(settings) {
   }
 }
 
+/** Apaga os textos/configurações salvos da sessão. */
+export function clearWorkspaceSettings() {
+  try {
+    window.localStorage.removeItem(WORKSPACE_KEY)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* IndexedDB: imagens                                                          */
-/* -------------------------------------------------------------------------- */
-
-function openDatabase() {
+/* -------------------------------------------------------------------------- */function openDatabase() {
   return new Promise((resolve, reject) => {
     if (!window.indexedDB) {
       reject(new Error('IndexedDB indisponível neste navegador.'))
