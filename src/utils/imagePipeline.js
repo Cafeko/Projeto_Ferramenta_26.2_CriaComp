@@ -23,6 +23,8 @@
 const DEFAULT_ALPHA_THRESHOLD = 8
 
 /** O formato GIF guarda o atraso em centésimos de segundo; abaixo de 20 ms os navegadores costumam acelerar. */
+import { GIFEncoder, applyPalette, quantize } from 'gifenc'
+
 const MIN_FRAME_DELAY_MS = 20
 
 /** Limite defensivo para não travar a aba com animações gigantes. */
@@ -836,56 +838,6 @@ function readImageData(context, width, height, label) {
 }
 
 /**
- * Quantizador simples de cores para GIF (reduce para até 256 cores).
- * Implementação pura em JavaScript, sem dependências externas.
- *
- * @param {Uint8ClampedArray[]} framesData
- * @returns {number[][]} Paleta de até 256 cores [r, g, b, a]
- */
-function buildGlobalPalette(framesData) {
-  const totalPixels = framesData.reduce((sum, data) => sum + data.length / 4, 0)
-  const maxSamples = 262_144 // ~256 mil pixels: bom equilíbrio qualidade × custo
-  const stride = Math.max(1, Math.ceil(totalPixels / maxSamples))
-
-  const sample = new Uint8Array(Math.ceil(totalPixels / stride) * 4)
-  let offset = 0
-
-  framesData.forEach((data) => {
-    const pixelCount = data.length / 4
-    for (let pixel = 0; pixel < pixelCount; pixel += stride) {
-      const index = pixel * 4
-      sample[offset] = data[index]
-      sample[offset + 1] = data[index + 1]
-      sample[offset + 2] = data[index + 2]
-      sample[offset + 3] = data[index + 3]
-      offset += 4
-    }
-  })
-
-  // Quantização simples: amostra uniforme até 255 cores + 1 para transparência
-  const palette = []
-  const seen = new Map()
-  const sampleCount = sample.length / 4
-
-  for (let i = 0; i < sampleCount && palette.length < 255; i += 1) {
-    const idx = i * 4
-    const r = sample[idx]
-    const g = sample[idx + 1]
-    const b = sample[idx + 2]
-    const a = sample[idx + 3]
-    const key = `${r},${g},${b},${a > 128 ? 255 : 0}`
-    if (!seen.has(key)) {
-      seen.set(key, palette.length)
-      palette.push([r, g, b, a > 128 ? 255 : 0])
-    }
-  }
-
-  // Garante índice transparente
-  palette.push([0, 0, 0, 0])
-  return palette
-}
-
-/**
  * Monta um GIF animado a partir dos frames e dispara o download.
  *
  * Implementação pura em JavaScript sem dependências externas.
@@ -909,8 +861,8 @@ export async function exportGIF(base64Frames, fps = 8, options = {}) {
     )
   }
 
-  // GIF usa centésimos de segundo; arredondamos para 10 ms.
-  const delay = Math.max(MIN_FRAME_DELAY_MS, Math.round(1000 / numericFps / 10) * 10)
+  // gifenc recebe o atraso em milissegundos e converte para centésimos.
+  const delayMs = Math.max(MIN_FRAME_DELAY_MS, Math.round(1000 / numericFps))
 
   const loaded = await Promise.all(
     frames.map((frame, index) => loadDrawable(frame, `o frame ${index + 1}`)),
@@ -945,14 +897,43 @@ export async function exportGIF(base64Frames, fps = 8, options = {}) {
     })
 
     try {
-      // 2) Paleta global a partir de uma amostra de todos os frames.
-      const palette = buildGlobalPalette(framesData)
+      // 2) Escreve cada frame com paleta própria e transparência de 1 bit.
+      const gif = GIFEncoder()
 
-      // 3) Escreve os frames no GIF (implementação mínima em JS puro).
-      // Nota: esta é uma implementação simplificada. Para GIFs mais complexos,
-      // recomenda-se usar uma biblioteca dedicada.
-      const gifBytes = encodeGIF(framesData, width, height, delay, palette)
+      framesData.forEach((data) => {
+        const rgba =
+          data instanceof Uint8ClampedArray ? data : new Uint8ClampedArray(data)
+        const palette = quantize(rgba, 256, {
+          format: 'rgba4444',
+          oneBitAlpha: true,
+        })
 
+        let transparentIndex = -1
+        for (let index = 0; index < palette.length; index += 1) {
+          if ((palette[index][3] ?? 255) === 0) {
+            transparentIndex = index
+            break
+          }
+        }
+
+        const indexed = applyPalette(rgba, palette, 'rgba4444')
+        if (transparentIndex >= 0) {
+          for (let i = 0, pixel = 0; i < rgba.length; i += 4, pixel += 1) {
+            if (rgba[i + 3] < 128) indexed[pixel] = transparentIndex
+          }
+        }
+
+        gif.writeFrame(indexed, width, height, {
+          palette,
+          delay: delayMs,
+          transparent: transparentIndex >= 0,
+          transparentIndex: transparentIndex >= 0 ? transparentIndex : 0,
+          dispose: 2,
+        })
+      })
+
+      gif.finish()
+      const gifBytes = gif.bytes()
       const blob = new Blob([gifBytes], { type: 'image/gif' })
 
       if (download) triggerDownload(blob, filename)
@@ -967,136 +948,6 @@ export async function exportGIF(base64Frames, fps = 8, options = {}) {
   } finally {
     loaded.forEach((frame) => frame.dispose())
   }
-}
-
-/**
- * Encoder GIF mínimo em JavaScript puro.
- * Gera um GIF válido com paleta global e transparência de 1 bit.
- *
- * @param {Uint8ClampedArray[]} framesData
- * @param {number} width
- * @param {number} height
- * @param {number} delay centésimos de segundo
- * @param {number[][]} paleta [r, g, b, a] até 256 cores
- * @returns {Uint8Array}
- */
-function encodeGIF(framesData, width, height, delay, palette) {
-  // Cabeçalho GIF89a
-  const header = new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]) // GIF89a
-  const lsd = new Uint8Array([ // Logical Screen Descriptor
-    width & 0xff, width >> 8,
-    height & 0xff, height >> 8,
-    0xf0, // Global Color Table flag, size 0 (2^(0+1)=2 entries, mas usamos full)
-    0x00, // Background color index
-    0x00, // Pixel aspect ratio
-  ])
-
-  // Paleta global (até 256 cores RGB)
-  const gctSize = Math.min(palette.length, 256)
-  const gct = new Uint8Array(gctSize * 3)
-  for (let i = 0; i < gctSize; i += 1) {
-    gct[i * 3] = palette[i][0] || 0
-    gct[i * 3 + 1] = palette[i][1] || 0
-    gct[i * 3 + 2] = palette[i][2] || 0
-  }
-
-  // Índice transparente (última cor da paleta)
-  const transparentIndex = gctSize - 1
-
-  // Application Extension (Netscape 2.0 para loop infinito)
-  const appExt = new Uint8Array([
-    0x21, 0xff, 0x0b, // Extension Introducer, Application Extension, size 11
-    0x4e, 0x45, 0x54, 0x53, 0x43, 0x41, 0x50, 0x45, 0x32, 0x2e, 0x30, // NETSCAPE2.0
-    0x03, 0x01, 0x00, 0x00, // Block size 3, loop forever, terminator
-    0x00,
-  ])
-
-  // Graphic Control Extension por frame
-  function gce(frameIndex) {
-    return new Uint8Array([
-      0x21, 0xf9, 0x04, // Extension Introducer, Graphic Control Extension, size 4
-      0x01, // Disposal method: do not dispose (0x01 << 2), user input 0, transparent color 0
-      delay & 0xff, delay >> 8, // Delay time
-      transparentIndex, // Transparent color index
-      0x00, // Block terminator
-    ])
-  }
-
-  // Image Descriptor + Image Data (LZW simplificado: armazenar como não comprimido)
-  function imageDataBlock(data, width, height) {
-    const id = new Uint8Array([
-      0x2c, // Image Separator
-      0x00, 0x00, // Left position
-      0x00, 0x00, // Top position
-      width & 0xff, width >> 8, // Width
-      height & 0xff, height >> 8, // Height
-      0x00, // No local color table
-    ])
-    return id
-  }
-
-  // Converte RGBA para índice de paleta (mais próximo)
-  function rgbaToIndex(r, g, b, a, palette) {
-    if (a < 128) return palette.length - 1 // transparente
-    let bestIdx = 0
-    let bestDist = Infinity
-    for (let i = 0; i < palette.length; i += 1) {
-      const dr = r - palette[i][0]
-      const dg = g - palette[i][1]
-      const db = b - palette[i][2]
-      const dist = dr * dr + dg * dg + db * db
-      if (dist < bestDist) {
-        bestDist = dist
-        bestIdx = i
-      }
-    }
-    return bestIdx
-  }
-
-  // Converte dados de imagem para índices de paleta
-  function indexImageData(data, width, height, palette) {
-    const indices = new Uint8Array(width * height)
-    for (let i = 0; i < width * height; i += 1) {
-      const idx = i * 4
-      indices[i] = rgbaToIndex(data[idx], data[idx + 1], data[idx + 2], data[idx + 3], palette)
-    }
-    return indices
-  }
-
-  // Simples LZW substituição: escreve dados brutos (não comprimido, mas válido)
-  // Para simplificar, usamos "uncompressed" LZW com código de tamanho fixo
-  function writeImageData(indices, width, height) {
-    const blocks = []
-    const blockSize = 255
-    for (let i = 0; i < indices.length; i += blockSize) {
-      const chunk = indices.slice(i, i + blockSize)
-      const block = new Uint8Array(chunk.length + 1)
-      block[0] = chunk.length
-      block.set(chunk, 1)
-      blocks.push(block)
-    }
-    blocks.push(new Uint8Array([0])) // Block terminator
-    return blocks
-  }
-
-  const allBytes = []
-  allBytes.push(...header)
-  allBytes.push(...lsd)
-  allBytes.push(...gct)
-  allBytes.push(...appExt)
-
-  framesData.forEach((data, frameIdx) => {
-    allBytes.push(...gce(frameIdx))
-    const id = imageDataBlock(data, width, height)
-    allBytes.push(...id)
-    const indices = indexImageData(data, width, height, palette)
-    const blocks = writeImageData(indices, width, height)
-    blocks.forEach((block) => allBytes.push(...block))
-  })
-
-  allBytes.push(0x3b) // GIF Trailer
-
-  return new Uint8Array(allBytes)
 }
 
 /**

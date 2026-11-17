@@ -552,8 +552,8 @@ await exportGIF(aligned, 8)
 - **`compileSpritesheetGrid(base64Frames, columns)`** — compila os frames em
   uma grade única, com células do tamanho do maior frame e fundo transparente.
 - **`exportGIF(base64Frames, fps, options)`** — normaliza os frames para o
-  mesmo canvas, calcula uma paleta global com transparência de 1 bit (encoder
-  GIF próprio em JS, sem dependência externa) e dispara o download (ou devolve
+  mesmo canvas e codifica um GIF animado com **gifenc** (paleta por frame,
+  transparência de 1 bit e loop infinito), disparando o download (ou devolvendo
   o `Blob` com `{ download: false }`).
 
 Os testes de navegador ficam em `tests/image-pipeline.html`: com `npm run dev`,
