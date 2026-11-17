@@ -18,6 +18,7 @@ import ExportPanel from './dashboard/ExportPanel'
 import FrameEditModal from './FrameEditModal'
 import GridPanel from './dashboard/GridPanel'
 import LogsPage from './dashboard/LogsPage'
+import ModeChooser from './dashboard/ModeChooser'
 import PreviewPanel from './dashboard/PreviewPanel'
 import ReferencePanel from './dashboard/ReferencePanel'
 import SettingsModal from './dashboard/SettingsModal'
@@ -309,6 +310,8 @@ export default function MainDashboard({
   onOpenLogs,
   settingsOpen = false,
   onCloseSettings,
+  homeOpen = false,
+  onCloseHome,
 }) {
   /* ---------------------------- Configurações ---------------------------- */
   const [initialSettings] = useState(loadAppSettings)
@@ -674,6 +677,14 @@ export default function MainDashboard({
   const handleSettingsChange = useCallback((patch) => {
     setSettings((current) => ({ ...current, ...patch }))
   }, [])
+
+  const handleChooseMode = useCallback(
+    (mode) => {
+      handleSettingsChange({ mode })
+      onCloseHome?.()
+    },
+    [handleSettingsChange, onCloseHome],
+  )
 
   /* ---------------- Persistência local (só neste dispositivo) ----------- */
   // Textos, prompts e grade são salvos por modo. As imagens usam chaves
@@ -2674,6 +2685,13 @@ export default function MainDashboard({
   return (
     <>
       <main className="relative mx-auto w-full max-w-[1600px] space-y-4 px-4 pt-5 pb-12">
+        {homeOpen ? (
+          <ModeChooser
+            currentMode={settings.mode}
+            onSelect={handleChooseMode}
+          />
+        ) : (
+          <>
         {settings.mode === 'editor' ? (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-3 py-2">
@@ -2882,6 +2900,8 @@ export default function MainDashboard({
             </span>
           </p>
         </section>
+          </>
+        )}
           </>
         )}
       </main>

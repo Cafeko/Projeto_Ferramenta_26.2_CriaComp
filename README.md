@@ -440,16 +440,24 @@ navegador em `spritetransfer:settings`):
 - **Limpar dados salvos:** apaga somente esses dados da sessão (imagens, textos,
   chaves e resultado). Pede confirmação e **não** toca nos logs de requisições,
   que só são apagados na página de logs.
-- **Modo avançado / editor / simples:** o **simples** é o padrão (fluxo guiado,
-  ver abaixo), o **editor** edita uma imagem enviada e o **avançado** mostra
-  todos os painéis de uma vez.
+- **Modo avançado / editor / simples:** o **simples** é o fluxo guiado, o
+  **editor** edita uma imagem enviada e o **avançado** mostra todos os painéis de
+  uma vez. A página inicial também permite escolher entre os três.
 - **Mostrar métricas no final:** liga/desliga o painel de métricas do rodapé.
+
+### Página inicial
+
+Ao abrir o app, a primeira tela é a **escolha de modo**, com três cartões
+(**Básico**, **Avançado** e **Editor**), uma descrição curta e o botão de
+entrada. O cartão do modo usado por último aparece como **“Continuar neste
+modo”**. O botão **Início** no cabeçalho volta a essa página a qualquer
+momento.
 
 ### Modo básico
 
-O **Modo simples** é a tela inicial do app e conduz o usuário por **um bloco de
-cada vez**, de cima para baixo, com uma frase curta de instrução em cada passo e
-um botão de continuar que só libera quando o passo está pronto:
+O **Modo básico** é o recomendado para começar e conduz o usuário por **um
+bloco de cada vez**, de cima para baixo, com uma frase curta de instrução em cada
+passo e um botão de continuar que só libera quando o passo está pronto:
 
 1. **Configure a API** — provedor, chave (validar) e modelo.
 2. **Informe as entradas** — referência de movimento, aparência/estilo e

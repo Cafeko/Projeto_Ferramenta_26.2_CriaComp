@@ -4,6 +4,7 @@ import {
   FlaskConical,
   Gamepad2,
   History,
+  Home,
   Settings,
   ShieldCheck,
 } from 'lucide-react'
@@ -14,6 +15,8 @@ import MainDashboard from './components/MainDashboard'
 export default function App() {
   const [logsOpen, setLogsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  // A página inicial (escolha de modo) abre a cada entrada no app.
+  const [homeOpen, setHomeOpen] = useState(true)
 
   return (
     <div className="relative min-h-screen overflow-x-hidden">
@@ -49,6 +52,16 @@ export default function App() {
                 <ShieldCheck className="size-3" />
                 BYOK · chave só na memória
               </span>
+
+              <button
+                type="button"
+                onClick={() => setHomeOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:text-cyan-200"
+                title="Página inicial (escolher modo)"
+              >
+                <Home className="size-3.5" />
+                <span className="hidden sm:inline">Início</span>
+              </button>
 
               <button
                 type="button"
@@ -100,6 +113,8 @@ export default function App() {
             onOpenLogs={() => setLogsOpen(true)}
             settingsOpen={settingsOpen}
             onCloseSettings={() => setSettingsOpen(false)}
+            homeOpen={homeOpen}
+            onCloseHome={() => setHomeOpen(false)}
           />
         </ErrorBoundary>
 
