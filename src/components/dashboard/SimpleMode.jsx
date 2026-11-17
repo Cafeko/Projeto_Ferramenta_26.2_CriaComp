@@ -201,7 +201,7 @@ export default function SimpleMode({
                 <ArrowRight className="size-3" />
               </button>
               <span className="text-[10px] text-slate-500">
-                Leva textos, referências e resultado para o avançado.
+                Leva o que fez para o modo avançado.
               </span>
             </div>
           </div>
