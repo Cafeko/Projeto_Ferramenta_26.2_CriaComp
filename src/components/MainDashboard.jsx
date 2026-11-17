@@ -16,6 +16,7 @@ import GridPanel from './dashboard/GridPanel'
 import LogsPage from './dashboard/LogsPage'
 import PreviewPanel from './dashboard/PreviewPanel'
 import ReferencePanel from './dashboard/ReferencePanel'
+import UsageSummary from './dashboard/UsageSummary'
 import { HelpTip } from './dashboard/ui'
 import {
   DEFAULT_PROVIDER,
@@ -286,7 +287,11 @@ function loadUsageHistory() {
   }
 }
 
-export default function MainDashboard({ logsOpen = false, onCloseLogs }) {
+export default function MainDashboard({
+  logsOpen = false,
+  onCloseLogs,
+  onOpenLogs,
+}) {
   /* ------------------------------- BYOK ---------------------------------- */
   const [initialApiConfig] = useState(loadSavedApiConfig)
   // Configurações e textos da última sessão (localStorage). As imagens são
@@ -2235,6 +2240,11 @@ export default function MainDashboard({ logsOpen = false, onCloseLogs }) {
             onExportGrid={handleExportGrid}
             onExportGif={handleExportGif}
             exporting={exporting}
+          />
+
+          <UsageSummary
+            history={usageHistory}
+            onOpenLogs={onOpenLogs ?? (() => {})}
           />
 
           <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 text-[10px] leading-relaxed text-slate-500 md:col-span-2 xl:col-span-1">

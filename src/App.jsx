@@ -79,6 +79,7 @@ export default function App() {
           <MainDashboard
             logsOpen={logsOpen}
             onCloseLogs={() => setLogsOpen(false)}
+            onOpenLogs={() => setLogsOpen(true)}
           />
         </ErrorBoundary>
 

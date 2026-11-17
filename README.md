@@ -391,6 +391,9 @@ duas colunas em tablets):
   esquerda, e não é alterada por esta grade.
 - **Exportação:** `[ EXPORTAR SPRITESHEET PNG (GRID) ]` e
   `[ EXPORTAR GIF ANIMADO ]`, ambos processados localmente pela Canvas API.
+- **Resumo da IA:** abaixo da exportação, mostra gasto total, chamadas
+  (sucessos/erros), tokens, qualidade média e a última chamada, com atalho para
+  a página de logs.
 
 ### Logs e métricas
 
