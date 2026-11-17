@@ -397,13 +397,17 @@ interface é organizada em **quatro faixas horizontais** (empilham no celular):
   preservar o contexto.
 
 ### Faixa 4 — resumo e privacidade
-- **Resumo da IA:** totais gerais (gasto, chamadas com sucessos/erros, tokens,
-  tempo, qualidade média e imagens geradas) ao lado dos dados da **imagem gerada
-  mais recentemente** — modelo, API, tipo, data/hora, duração, tokens, custo,
-  nota de qualidade e componentes (pose, consistência, pixel art) — com atalho
-  para a página de logs.
-- **Privacidade:** aviso de que tudo fica no dispositivo e botão para apagar as
-  imagens salvas.
+- **Resumo da IA:** ocupa a largura toda e mostra os totais gerais (gasto,
+  chamadas com sucessos/erros, tokens, tempo, qualidade média e imagens geradas),
+  os dados da **imagem gerada mais recentemente** (modelo, API, tipo, data/hora,
+  duração, tokens, custo e imagens) e o card **Qualidade do resultado** com a
+  nota `/100`, o selo da faixa (Ótima/Boa/Regular/Fraca) e as barras de
+  **fidelidade de pose**, **consistência do personagem** e **pixel art
+  utilizável** (com paleta dominante e tipo de fundo), além do atalho para a
+  página de logs.
+- **Privacidade:** aviso em faixa própria, abaixo do resumo, informando que nada
+  é salvo nos servidores do app — chave, configurações, textos e imagens ficam
+  apenas no navegador.
 
 ### Logs e métricas
 
@@ -434,9 +438,9 @@ apenas no navegador em uso:
 Ao abrir o site, a sessão anterior é restaurada automaticamente (configurações e
 imagens). O escopo é a origem + navegador + perfil: **não** aparece em outro
 dispositivo ou navegador, não é sincronizado e some ao limpar os dados do site.
-O botão **“Limpar imagens salvas neste dispositivo”** (card Privacidade) apaga só
-as imagens do IndexedDB; a tela atual continua até recarregar. Desmarcar “Salvar
-chave neste navegador” mantém a chave só na memória da aba.
+Para apagar as imagens salvas (IndexedDB), limpe os dados do site pelas
+configurações do navegador. Desmarcar “Salvar chave neste navegador” mantém a
+chave só na memória da aba.
 
 Os frames e as referências são normalizados para Data URLs antes de ir ao
 backend, e o cliente bloqueia o envio quando o Base64 passa do limite da Vercel.

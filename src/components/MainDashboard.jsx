@@ -3,7 +3,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Info,
-  Trash2,
+  ShieldCheck,
   X,
   XCircle,
 } from 'lucide-react'
@@ -18,7 +18,6 @@ import LogsPage from './dashboard/LogsPage'
 import PreviewPanel from './dashboard/PreviewPanel'
 import ReferencePanel from './dashboard/ReferencePanel'
 import UsageSummary from './dashboard/UsageSummary'
-import { HelpTip } from './dashboard/ui'
 import {
   DEFAULT_PROVIDER,
   MAX_PREVIOUS_FRAMES,
@@ -30,7 +29,6 @@ import {
 } from '../lib/api'
 import {
   LOCAL_IMAGE_KEYS,
-  clearLocalImages,
   deleteLocalImages,
   getLocalImages,
   loadWorkspaceSettings,
@@ -706,24 +704,6 @@ export default function MainDashboard({
         )
       }
     })()
-  }, [pushToast])
-
-  const handleClearLocalImages = useCallback(async () => {
-    const ok = await clearLocalImages()
-    if (!ok) {
-      pushToast(
-        'Não foi possível apagar as imagens salvas. O armazenamento do ' +
-          'navegador pode estar bloqueado; limpe os dados do site pelas ' +
-          'configurações do navegador.',
-        'error',
-      )
-      return
-    }
-    pushToast(
-      'Imagens salvas neste dispositivo foram apagadas. A tela atual continua ' +
-        'até você recarregar ou gerar novamente.',
-      'info',
-    )
   }, [pushToast])
 
   const handleConfirmRemoveGenerated = useCallback(async () => {
@@ -2264,60 +2244,28 @@ export default function MainDashboard({
           />
         </section>
 
-        {/* Faixa 4 — resumo de métricas, custos e tempo */}
-        <section
-          aria-label="Resumo de métricas"
-          className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]"
-        >
+        {/* Faixa 4 — resumo de métricas, custos e tempo + aviso de privacidade */}
+        <section aria-label="Resumo de métricas" className="space-y-4">
           <UsageSummary
             history={usageHistory}
+            quality={quality}
+            onEditFrame={frames.length > 1 ? handleEditFrame : null}
             onOpenLogs={onOpenLogs ?? (() => {})}
           />
 
-          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 text-[10px] leading-relaxed text-slate-500">
-            <div className="flex items-center justify-between gap-2">
-              <p className="flex items-center gap-1.5 font-semibold tracking-wide text-slate-400 uppercase">
-                <Info className="size-3" />
-                Privacidade
-              </p>
-              <HelpTip
-                label="Ajuda: Privacidade"
-                content={
-                  <>
-                    <p>
-                      A chave, as configurações e as imagens (referências e
-                      último resultado) ficam apenas neste dispositivo — no{' '}
-                      <code>localStorage</code> e no <code>IndexedDB</code>. Não
-                      são gravadas no servidor nem aparecem em outro navegador.
-                    </p>
-                    <p>
-                      Desmarque “Salvar chave neste navegador” para manter a
-                      chave só na memória da aba. A última sessão é restaurada ao
-                      abrir; use o botão abaixo para apagar as imagens salvas.
-                    </p>
-                    <p>
-                      Recorte, alinhamento, spritesheet e GIF são processados
-                      localmente via Canvas API.
-                    </p>
-                  </>
-                }
-              />
-            </div>
-            <p className="mt-1.5">
-              Tudo fica só neste dispositivo; nada é gravado no servidor.
-            </p>
-            <button
-              type="button"
-              onClick={handleClearLocalImages}
-              className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2 py-1 text-[10px] font-semibold text-slate-400 transition hover:border-rose-400/30 hover:bg-rose-400/5 hover:text-rose-300"
-            >
-              <Trash2 className="size-3" />
-              Limpar imagens salvas neste dispositivo
-            </button>
-            <p className="mt-1.5 font-mono text-slate-600">
-              pipeline 100% client-side · sem upload de frames
-            </p>
-          </div>
+          <p className="flex items-start gap-2 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5 text-[10px] leading-relaxed text-slate-500">
+            <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-emerald-400/80" />
+            <span>
+              <strong className="font-semibold text-slate-300">
+                Privacidade:
+              </strong>{' '}
+              nada é salvo nos servidores do app. Chave, configurações, textos e
+              imagens ficam somente neste navegador, no <code>localStorage</code>{' '}
+              e no <code>IndexedDB</code>, e podem ser removidos ao limpar os
+              dados do site. Recorte, spritesheet e GIF são processados
+              localmente.
+            </span>
+          </p>
         </section>
       </main>
 

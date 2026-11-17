@@ -1,8 +1,8 @@
 import { ArrowRight, Gauge, ImageIcon } from 'lucide-react'
 
 import { PROVIDERS, formatDuration, formatUsd } from '../../lib/api'
-import { qualityGrade } from '../../utils/qualityMetrics'
 import { Card, Pill } from './ui'
+import QualityCard from './QualityCard'
 
 const KIND_LABELS = {
   generation: 'Geração',
@@ -65,15 +65,22 @@ function pickLatestGeneration(history) {
 }
 
 /**
- * Resumo compacto das métricas de IA, com os totais gerais e os dados da
- * imagem gerada mais recentemente.
+ * Resumo compacto das métricas de IA, com os totais gerais, os dados da imagem
+ * gerada mais recentemente e a nota de qualidade do resultado exibido.
  *
  * @param {{
  *   history: Array<Record<string, any>>,
+ *   quality?: import('../../utils/qualityMetrics').QualityReport | null,
+ *   onEditFrame?: ((index: number) => void) | null,
  *   onOpenLogs: () => void,
  * }} props
  */
-export default function UsageSummary({ history, onOpenLogs }) {
+export default function UsageSummary({
+  history,
+  quality = null,
+  onEditFrame = null,
+  onOpenLogs,
+}) {
   const totals = history.reduce(
     (acc, entry) => {
       acc.calls += 1
@@ -120,10 +127,22 @@ export default function UsageSummary({ history, onOpenLogs }) {
   const averageQuality =
     totals.rated > 0 ? Math.round(totals.qualitySum / totals.rated) : null
 
+  // A avaliação ao vivo tem pose/paleta/fundo; o histórico guarda só as notas.
+  const qualityForCard =
+    quality ||
+    (last?.quality
+      ? {
+          score: last.quality.score,
+          pose: last.quality.pose,
+          consistency: last.quality.consistency,
+          pixelArt: last.quality.pixelArt,
+        }
+      : null)
+
   return (
     <Card
       title="Resumo da IA"
-      subtitle="Totais e a imagem gerada mais recentemente"
+      subtitle="Totais, imagem mais recente e qualidade do resultado"
       icon={Gauge}
       bodyClassName="p-3"
       help={
@@ -137,24 +156,27 @@ export default function UsageSummary({ history, onOpenLogs }) {
             estimado. A qualidade média usa apenas as chamadas avaliadas.
           </p>
           <p>
-            À direita ficam os dados específicos da última chamada que devolveu
-            uma imagem. A tabela completa, com filtros e exportação, fica em{' '}
+            A coluna do meio mostra a última chamada que devolveu uma imagem e a
+            nota de qualidade é a da imagem exibida na visualização.
+          </p>
+          <p>
+            A tabela completa, com filtros e exportação, fica em{' '}
             <strong>Atividade → Logs</strong>.
           </p>
         </>
       }
     >
-      {totals.calls === 0 ? (
-        <p className="text-[11px] leading-relaxed text-slate-500">
-          Sem chamadas registradas ainda. O resumo aparece aqui e em{' '}
-          <strong className="text-slate-300">Atividade → Logs</strong>.
-        </p>
-      ) : (
-        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div>
-            <p className="mb-1.5 text-[9px] font-semibold tracking-wider text-slate-500 uppercase">
-              Totais gerais
+      <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,330px)]">
+        <div>
+          <p className="mb-1.5 text-[9px] font-semibold tracking-wider text-slate-500 uppercase">
+            Totais gerais
+          </p>
+          {totals.calls === 0 ? (
+            <p className="text-[11px] leading-relaxed text-slate-500">
+              Sem chamadas registradas ainda. O histórico completo fica em{' '}
+              <strong className="text-slate-300">Atividade → Logs</strong>.
             </p>
+          ) : (
             <div className="grid grid-cols-2 gap-2">
               <CompactMetric
                 label="Gasto total"
@@ -203,105 +225,78 @@ export default function UsageSummary({ history, onOpenLogs }) {
                 hint="nos registros salvos"
               />
             </div>
-          </div>
+          )}
+        </div>
 
-          <div className="rounded-lg border border-white/5 bg-black/20 p-2.5">
-            <div className="mb-1.5 flex items-center justify-between gap-2">
-              <p className="flex items-center gap-1.5 text-[9px] font-semibold tracking-wider text-slate-500 uppercase">
-                <ImageIcon className="size-3" />
-                Imagem mais recente
-              </p>
-              {last && (
-                <Pill tone={last.status === 'error' ? 'red' : 'green'}>
-                  {last.status === 'error' ? 'Erro' : 'Sucesso'}
-                </Pill>
-              )}
-            </div>
-
-            {!last ? (
-              <p className="py-4 text-center text-[11px] text-slate-500">
-                Nenhuma geração bem-sucedida registrada.
-              </p>
-            ) : (
-              <>
-                <div className="mb-1.5 min-w-0">
-                  <p
-                    className="truncate text-[12px] font-semibold text-slate-100"
-                    title={last.modelId}
-                  >
-                    {last.modelId || 'Modelo não informado'}
-                  </p>
-                  <p className="truncate text-[10px] text-slate-500">
-                    {PROVIDER_LABELS[last.provider] ||
-                      last.provider ||
-                      'API não informada'}{' '}
-                    · {KIND_LABELS[last.kind] || last.kind || '—'} ·{' '}
-                    {formatDateTime(last.at)}
-                  </p>
-                </div>
-
-                <div className="grid gap-x-4 sm:grid-cols-2">
-                  <DetailRow
-                    label="Tempo de resposta"
-                    value={formatDuration(last.usage?.clientElapsedMs)}
-                  />
-                  <DetailRow
-                    label="Tempo no servidor"
-                    value={formatDuration(last.usage?.serverElapsedMs)}
-                  />
-                  <DetailRow
-                    label="Tokens"
-                    value={formatTokens(last.usage?.totalTokens)}
-                  />
-                  <DetailRow
-                    label="Custo"
-                    value={formatUsd(last.usage?.costUsd)}
-                  />
-                  <DetailRow
-                    label="Imagens"
-                    value={
-                      typeof last.usage?.imageCount === 'number'
-                        ? last.usage.imageCount
-                        : '—'
-                    }
-                  />
-                  <DetailRow
-                    label="Qualidade"
-                    value={
-                      typeof last.quality?.score === 'number'
-                        ? `${last.quality.score}/100 · ${
-                            qualityGrade(last.quality.score).label
-                          }`
-                        : '—'
-                    }
-                  />
-                </div>
-
-                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                  {[
-                    ['Pose', last.quality?.pose],
-                    ['Consistência', last.quality?.consistency],
-                    ['Pixel art', last.quality?.pixelArt],
-                  ].map(([label, value]) => (
-                    <span
-                      key={label}
-                      className="rounded border border-white/5 bg-white/[0.03] px-1.5 py-0.5 font-mono text-[9px] text-slate-400"
-                    >
-                      {label} {typeof value === 'number' ? `${value}` : '—'}
-                    </span>
-                  ))}
-                </div>
-
-                {typeof last.quality?.score !== 'number' && (
-                  <p className="mt-1.5 text-[10px] text-slate-600">
-                    Qualidade ainda não avaliada para esta imagem.
-                  </p>
-                )}
-              </>
+        <div className="rounded-lg border border-white/5 bg-black/20 p-2.5">
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <p className="flex items-center gap-1.5 text-[9px] font-semibold tracking-wider text-slate-500 uppercase">
+              <ImageIcon className="size-3" />
+              Imagem mais recente
+            </p>
+            {last && (
+              <Pill tone={last.status === 'error' ? 'red' : 'green'}>
+                {last.status === 'error' ? 'Erro' : 'Sucesso'}
+              </Pill>
             )}
           </div>
+
+          {!last ? (
+            <p className="py-4 text-center text-[11px] text-slate-500">
+              Nenhuma geração bem-sucedida registrada.
+            </p>
+          ) : (
+            <>
+              <div className="mb-1.5 min-w-0">
+                <p
+                  className="truncate text-[12px] font-semibold text-slate-100"
+                  title={last.modelId}
+                >
+                  {last.modelId || 'Modelo não informado'}
+                </p>
+                <p className="truncate text-[10px] text-slate-500">
+                  {PROVIDER_LABELS[last.provider] ||
+                    last.provider ||
+                    'API não informada'}{' '}
+                  · {KIND_LABELS[last.kind] || last.kind || '—'} ·{' '}
+                  {formatDateTime(last.at)}
+                </p>
+              </div>
+
+              <div className="grid gap-x-4 sm:grid-cols-2">
+                <DetailRow
+                  label="Tempo de resposta"
+                  value={formatDuration(last.usage?.clientElapsedMs)}
+                />
+                <DetailRow
+                  label="Tempo no servidor"
+                  value={formatDuration(last.usage?.serverElapsedMs)}
+                />
+                <DetailRow
+                  label="Tokens"
+                  value={formatTokens(last.usage?.totalTokens)}
+                />
+                <DetailRow
+                  label="Custo"
+                  value={formatUsd(last.usage?.costUsd)}
+                />
+                <DetailRow
+                  label="Imagens"
+                  value={
+                    typeof last.usage?.imageCount === 'number'
+                      ? last.usage.imageCount
+                      : '—'
+                  }
+                />
+              </div>
+            </>
+          )}
         </div>
-      )}
+
+        <div className="lg:col-span-2 xl:col-span-1">
+          <QualityCard quality={qualityForCard} onEditFrame={onEditFrame} />
+        </div>
+      </div>
 
       <button
         type="button"
