@@ -1035,28 +1035,6 @@ export default function MainDashboard({
     return () => window.clearInterval(id)
   }, [viewMode, fps, referenceFrames.length, frames.length])
 
-  /* -------------------- Limpeza ao mudar inputs da coluna esquerda -------------------- */
-  useEffect(() => {
-    if (frames.length === 0) return
-    // Mudanças em referência/prompt invalidam a geração anterior. Modelo e
-    // provedor ficam de fora: a validação automática da chave muda o modelo
-    // depois de restaurar a sessão e não deve apagar o resultado salvo.
-    setGeneratedSheets([])
-    setFrames([])
-    setCorrectionFrame(null)
-    setCorrectionPrompt('')
-    setCurrentFrameIndex(0)
-    setModalOpen(false)
-    setModalCandidateFrame(null)
-    setModalPreviewFrame(null)
-  }, [
-    appearance,
-    artStyle,
-    reference,
-    styleReference,
-    appearanceReference,
-  ])
-
   /* ------------------------ Cronômetro ---------------------------------- */
   useEffect(() => {
     if (!generating && !correcting) {

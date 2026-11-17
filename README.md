@@ -387,6 +387,9 @@ interface é organizada em **quatro faixas horizontais** (empilham no celular):
 - **Remover resultado:** o botão no card de visualização apaga a imagem gerada e
   a cópia salva neste dispositivo. Pede confirmação, porque a ação não pode ser
   desfeita.
+- **Resultado preservado:** mexer nos inputs (textos, referências, grade, FPS,
+  modelo) **não apaga** a imagem gerada. Ela só sai ao usar **Remover** ou ao
+  clicar em `[ GERAR NOVO SPRITESHEET ]`.
 - **Grade de Recorte** (à direita da visualização): fatia a referência e o
   resultado usando Colunas/Linhas. A quantidade de frames desenhada pela IA vem
   de **Frames a Gerar**, na faixa anterior, e não é alterada por esta grade.
