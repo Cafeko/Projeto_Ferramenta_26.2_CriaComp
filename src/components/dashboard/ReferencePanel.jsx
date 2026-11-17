@@ -135,11 +135,13 @@ export default function ReferencePanel({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex h-full flex-col gap-4">
       <Card
         title="Referências e Personagem"
         subtitle="Movimento, aparência e estilo"
         icon={Sparkles}
+        className="flex flex-1 flex-col"
+        bodyClassName="flex flex-1 flex-col p-4"
         help={
           <>
             <p>
@@ -164,8 +166,8 @@ export default function ReferencePanel({
           </>
         }
       >
-        <div className="grid gap-4 xl:grid-cols-3">
-          <section>
+        <div className="grid flex-1 gap-4 xl:auto-rows-fr xl:grid-cols-3">
+          <section className="flex h-full flex-col">
             <div className="mb-2 flex items-center justify-between gap-2">
               <h3 className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-slate-300 uppercase">
                 <Film className="size-3.5 text-cyan-400" />
@@ -177,7 +179,7 @@ export default function ReferencePanel({
                 </span>
               )}
             </div>
-            <div>
+            <div className="flex flex-1 flex-col">
           <input
             ref={inputRef}
             type="file"
@@ -206,7 +208,7 @@ export default function ReferencePanel({
             }}
             onDragLeave={() => setDragging(false)}
             onDrop={handleDrop}
-            className={`cursor-pointer rounded-lg border border-dashed p-3 transition focus-visible:ring-2 focus-visible:ring-cyan-400/40 focus-visible:outline-none ${
+            className={`flex flex-1 cursor-pointer flex-col justify-center rounded-lg border border-dashed p-3 transition focus-visible:ring-2 focus-visible:ring-cyan-400/40 focus-visible:outline-none ${
               dragging
                 ? 'border-cyan-400/70 bg-cyan-400/10'
                 : 'border-white/15 bg-black/20 hover:border-cyan-400/40 hover:bg-white/[0.03]'
@@ -375,20 +377,25 @@ export default function ReferencePanel({
         </div>
         </section>
 
-        <section className="border-t border-white/10 pt-4 xl:border-t-0 xl:border-l xl:pt-0 xl:pl-4">
+        <section className="flex h-full flex-col border-t border-white/10 pt-4 xl:border-t-0 xl:border-l xl:pt-0 xl:pl-4">
           <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-slate-300 uppercase">
             <User className="size-3.5 text-cyan-400" />
             Aparência do Personagem
           </h3>
-          <div className="space-y-3">
-          <Field label="Descrição" htmlFor="appearance-input">
+          <div className="flex flex-1 flex-col gap-3">
+          <Field
+            label="Descrição"
+            htmlFor="appearance-input"
+            className="flex flex-1 flex-col"
+            stretch
+          >
             <textarea
               id="appearance-input"
               rows={3}
               value={appearance}
               onChange={(event) => onAppearanceChange(event.target.value)}
               placeholder="Ex.: cavaleira de armadura azul, cabelo curto branco, espada dourada, 32×32 px"
-              className={`${inputClass} resize-y`}
+              className={`${inputClass} flex-1 resize-y`}
             />
 
             <input
@@ -479,20 +486,25 @@ export default function ReferencePanel({
           </div>
         </section>
 
-        <section className="border-t border-white/10 pt-4 xl:border-t-0 xl:border-l xl:pt-0 xl:pl-4">
+        <section className="flex h-full flex-col border-t border-white/10 pt-4 xl:border-t-0 xl:border-l xl:pt-0 xl:pl-4">
           <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-slate-300 uppercase">
             <Palette className="size-3.5 text-cyan-400" />
             Estilo de Arte
           </h3>
-          <div className="space-y-3">
-            <Field label="Descrição" htmlFor="style-input">
+          <div className="flex flex-1 flex-col gap-3">
+            <Field
+              label="Descrição"
+              htmlFor="style-input"
+              className="flex flex-1 flex-col"
+              stretch
+            >
             <textarea
               id="style-input"
               rows={2}
               value={artStyle}
               onChange={(event) => onArtStyleChange(event.target.value)}
               placeholder="Ex.: pixel art 16-bit, paleta limitada, contorno nítido, fundo transparente"
-              className={`${inputClass} resize-y`}
+              className={`${inputClass} flex-1 resize-y`}
             />
 
             <input

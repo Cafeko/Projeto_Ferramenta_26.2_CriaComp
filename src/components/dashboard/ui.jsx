@@ -151,13 +151,29 @@ export function Card({
  *   htmlFor?: string,
  *   children: import('react').ReactNode,
  *   className?: string,
+ *   stretch?: boolean,
  * }} props
  */
-export function Field({ label, icon: Icon, hint, help, htmlFor, children, className = '' }) {
+export function Field({
+  label,
+  icon: Icon,
+  hint,
+  help,
+  htmlFor,
+  children,
+  className = '',
+  stretch = false,
+}) {
   return (
     <div className={className}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
+      <div
+        className={`flex justify-between gap-2${
+          stretch ? ' min-h-0 flex-1 items-stretch' : ' items-start'
+        }`}
+      >
+        <div
+          className={`min-w-0 flex-1${stretch ? ' flex flex-col' : ''}`}
+        >
           <label className={labelClass} htmlFor={htmlFor}>
             {Icon && <Icon className="size-3.5" />}
             {label}

@@ -2134,7 +2134,7 @@ export default function MainDashboard({
         {/* Faixa 1 — API + inputs, ocupando a largura toda */}
         <section
           aria-label="Configuração e referências"
-          className="grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]"
+          className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)]"
         >
           <ApiConfigPanel
             provider={provider}
