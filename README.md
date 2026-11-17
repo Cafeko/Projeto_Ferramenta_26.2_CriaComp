@@ -389,9 +389,22 @@ duas colunas em tablets):
 - **Grade de Recorte:** fatia a referência e o resultado usando Colunas/Linhas.
   A quantidade de frames desenhada pela IA vem de **Frames a Gerar**, na coluna
   esquerda, e não é alterada por esta grade.
-- **Métricas:** tokens, custo estimado, tempo e qualidade por chamada.
 - **Exportação:** `[ EXPORTAR SPRITESHEET PNG (GRID) ]` e
   `[ EXPORTAR GIF ANIMADO ]`, ambos processados localmente pela Canvas API.
+
+### Logs e métricas
+
+O botão **Atividade** no cabeçalho abre a página **Logs**, separada do gerador:
+
+- Tabela com **data/hora, status (sucesso/erro), tipo, modelo, provedor/API,
+  duração, tokens, custo e nota de qualidade** de cada requisição.
+- Linhas expansíveis com tempo no servidor, tokens de entrada/saída, imagens,
+  fonte do custo, componentes da qualidade e mensagem de erro.
+- Filtros por texto, status, provedor, tipo e período.
+- **Exportar CSV** (abre no Excel) respeitando os filtros atuais.
+- **Limpar histórico** com confirmação; a ação não pode ser desfeita.
+- Guarda as **últimas 100 requisições** (descarta a mais antiga) e registra
+  também as que falharam. As imagens **não** são salvas no histórico.
 
 ### Persistência local (por dispositivo)
 
@@ -400,8 +413,8 @@ apenas no navegador em uso:
 
 - **`localStorage`** — chave de API por provedor e modelo preferido
   (`spritetransfer:api-config`), configurações e textos da sessão
-  (`spritetransfer:workspace`) e histórico de métricas
-  (`spritetransfer:usage-history`).
+  (`spritetransfer:workspace`) e histórico de logs
+  (`spritetransfer:usage-history`, últimas 100 requisições, sem imagens).
 - **IndexedDB** (`spritetransfer-local`) — imagens de referência de pose, estilo
   e aparência, além do último spritesheet gerado, guardadas como Blob.
 
@@ -466,7 +479,7 @@ recorte, alinhamento, compilação, GIF e erros).
 
 ## 📊 Métricas: tempo, custo e qualidade
 
-O painel **Métricas** mostra, para cada chamada à IA, o tempo, o custo e a
+A página **Logs** (botão **Atividade** no cabeçalho) mostra, para cada chamada à IA, o tempo, o custo e a
 **qualidade** do resultado, além da média acumulada. A qualidade é calculada
 em `src/utils/qualityMetrics.js`, **no navegador e sem chamar a IA** (avaliar
 não pode gerar custo nem tempo extra). A nota vai de 0 a 100 e mede a

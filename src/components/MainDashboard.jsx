@@ -13,9 +13,9 @@ import CorrectionPanel from './dashboard/CorrectionPanel'
 import ExportPanel from './dashboard/ExportPanel'
 import FrameEditModal from './FrameEditModal'
 import GridPanel from './dashboard/GridPanel'
+import LogsPage from './dashboard/LogsPage'
 import PreviewPanel from './dashboard/PreviewPanel'
 import ReferencePanel from './dashboard/ReferencePanel'
-import UsagePanel from './dashboard/UsagePanel'
 import { HelpTip } from './dashboard/ui'
 import {
   DEFAULT_PROVIDER,
@@ -221,7 +221,7 @@ function ToastStack({ toasts, onDismiss }) {
 
 const USAGE_STORAGE_KEY = 'spritetransfer:usage-history'
 const API_CONFIG_STORAGE_KEY = 'spritetransfer:api-config'
-const MAX_USAGE_HISTORY = 200
+const MAX_USAGE_HISTORY = 100
 
 /** Lê configuração de API salva (provedor, chaves e modelos preferidos). */
 function loadSavedApiConfig() {
@@ -267,19 +267,26 @@ function loadUsageHistory() {
   try {
     const parsed = JSON.parse(window.localStorage.getItem(USAGE_STORAGE_KEY) || '[]')
     if (!Array.isArray(parsed)) return []
-    return parsed.filter(
-      (entry) =>
-        entry &&
-        typeof entry.id === 'number' &&
-        entry.usage &&
-        typeof entry.usage.clientElapsedMs === 'number',
-    )
+    return parsed
+      .filter(
+        (entry) =>
+          entry &&
+          typeof entry.id === 'number' &&
+          entry.usage &&
+          typeof entry.usage.clientElapsedMs === 'number',
+      )
+      .map((entry) => ({
+        ...entry,
+        // Entradas antigas não tinham status; eram chamadas bem-sucedidas.
+        status: entry.status === 'error' ? 'error' : 'success',
+      }))
+      .slice(-MAX_USAGE_HISTORY)
   } catch {
     return []
   }
 }
 
-export default function MainDashboard() {
+export default function MainDashboard({ logsOpen = false, onCloseLogs }) {
   /* ------------------------------- BYOK ---------------------------------- */
   const [initialApiConfig] = useState(loadSavedApiConfig)
   // Configurações e textos da última sessão (localStorage). As imagens são
@@ -524,26 +531,62 @@ export default function MainDashboard() {
     }
   }, [provider, rememberKey, savedKeys, savedModels, pushToast])
 
-  /** Chama a API e registra as métricas da resposta no histórico. */
+  /** Chama a API e registra a requisição (sucesso ou erro) no histórico. */
   const generateAndTrack = useCallback(
     async (input) => {
-      const result = await generateSprites(input)
-      usageId.current += 1
-      const entry = {
-        id: usageId.current,
-        at: Date.now(),
-        kind: input.correctionPrompt
-          ? input.targetFrameIndex !== null &&
-            input.targetFrameIndex !== undefined
-            ? 'single'
-            : 'batch'
-          : 'generation',
-        provider: result.provider,
-        modelId: result.modelId,
-        usage: result.usage,
+      const startedAt = Date.now()
+      const kind = input.correctionPrompt
+        ? input.targetFrameIndex !== null && input.targetFrameIndex !== undefined
+          ? 'single'
+          : 'batch'
+        : 'generation'
+
+      try {
+        const result = await generateSprites(input)
+        usageId.current += 1
+        const entry = {
+          id: usageId.current,
+          at: startedAt,
+          kind,
+          status: 'success',
+          provider: result.provider,
+          modelId: result.modelId,
+          usage: result.usage,
+        }
+        setUsageHistory((current) =>
+          [...current, entry].slice(-MAX_USAGE_HISTORY),
+        )
+        return result
+      } catch (error) {
+        usageId.current += 1
+        const entry = {
+          id: usageId.current,
+          at: startedAt,
+          kind,
+          status: 'error',
+          provider: input.provider,
+          modelId: input.modelId,
+          errorCode: error?.code || 'request_failed',
+          errorMessage:
+            error?.message || 'A requisição falhou sem detalhes adicionais.',
+          usage: {
+            clientElapsedMs: Math.max(0, Date.now() - startedAt),
+            serverElapsedMs: null,
+            inputTokens: null,
+            outputTokens: null,
+            totalTokens: null,
+            imageCount: 0,
+            costUsd: null,
+            costSource: 'unavailable',
+            costNote: null,
+            computeSeconds: null,
+          },
+        }
+        setUsageHistory((current) =>
+          [...current, entry].slice(-MAX_USAGE_HISTORY),
+        )
+        throw error
       }
-      setUsageHistory((current) => [...current, entry].slice(-MAX_USAGE_HISTORY))
-      return result
     },
     [],
   )
@@ -711,19 +754,16 @@ export default function MainDashboard() {
   // correção aplicada ou novo recorte da grade). A nota também é anexada à
   // última chamada do histórico, para comparar custo × tempo × qualidade.
   const [quality, setQuality] = useState(null)
-  const [qualityBusy, setQualityBusy] = useState(false)
 
   useEffect(() => {
     if (frames.length === 0 || slicingResult || generating) {
       if (frames.length === 0) {
         setQuality(null)
-        setQualityBusy(false)
       }
       return undefined
     }
 
     let cancelled = false
-    setQualityBusy(true)
     evaluateAnimationQuality({ frames, referenceFrames })
       .then((report) => {
         if (cancelled || !report) return
@@ -731,6 +771,8 @@ export default function MainDashboard() {
         setUsageHistory((current) => {
           if (current.length === 0) return current
           const last = current[current.length - 1]
+          // Uma falha posterior não deve receber a nota da imagem anterior.
+          if (last.status === 'error') return current
           return [
             ...current.slice(0, -1),
             {
@@ -750,9 +792,6 @@ export default function MainDashboard() {
           console.warn('[quality]', error)
           setQuality(null)
         }
-      })
-      .finally(() => {
-        if (!cancelled) setQualityBusy(false)
       })
 
     return () => {
@@ -2189,14 +2228,6 @@ export default function MainDashboard() {
             onAutoSliceChange={setAutoSlice}
           />
 
-          <UsagePanel
-            history={usageHistory}
-            onReset={handleResetUsage}
-            quality={quality}
-            qualityBusy={qualityBusy}
-            onEditFrame={frames.length > 1 ? handleEditFrame : null}
-          />
-
           <ExportPanel
             frames={frames}
             columns={exportColumns}
@@ -2252,6 +2283,13 @@ export default function MainDashboard() {
           </div>
         </aside>
       </main>
+
+      <LogsPage
+        open={logsOpen}
+        history={usageHistory}
+        onClose={onCloseLogs}
+        onClear={handleResetUsage}
+      />
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
 

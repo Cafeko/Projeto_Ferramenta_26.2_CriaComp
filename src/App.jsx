@@ -1,9 +1,12 @@
-import { BookOpen, FlaskConical, Gamepad2, ShieldCheck } from 'lucide-react'
+import { useState } from 'react'
+import { BookOpen, FlaskConical, Gamepad2, History, ShieldCheck } from 'lucide-react'
 
 import { ErrorBoundary } from './components/ErrorBoundary'
 import MainDashboard from './components/MainDashboard'
 
 export default function App() {
+  const [logsOpen, setLogsOpen] = useState(false)
+
   return (
     <div className="relative min-h-screen overflow-x-hidden">
       <div className="pointer-events-none fixed inset-0 bg-pixel-grid" aria-hidden="true" />
@@ -39,6 +42,16 @@ export default function App() {
                 BYOK · chave só na memória
               </span>
 
+              <button
+                type="button"
+                onClick={() => setLogsOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:text-cyan-200"
+                title="Histórico de requisições"
+              >
+                <History className="size-3.5" />
+                <span className="hidden sm:inline">Atividade</span>
+              </button>
+
               <a
                 href="/laboratorio-api.html"
                 className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:text-cyan-200"
@@ -63,7 +76,10 @@ export default function App() {
         </header>
 
         <ErrorBoundary>
-          <MainDashboard />
+          <MainDashboard
+            logsOpen={logsOpen}
+            onCloseLogs={() => setLogsOpen(false)}
+          />
         </ErrorBoundary>
 
         <footer className="border-t border-white/5">
