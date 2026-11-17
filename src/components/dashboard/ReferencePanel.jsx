@@ -42,6 +42,7 @@ import { Alert, Card, Field, PrimaryButton, inputClass } from './ui'
  *   generateHint: string,
  *   referenceError?: string,
  *   onMultipleFiles?: () => void,
+ *   referenceGrid: { columns: number, rows: number, total?: number },
  *   generationColumns: string,
  *   generationRows: string,
  *   onGenerationColumnsChange: (value: string) => void,
@@ -69,6 +70,7 @@ export default function ReferencePanel({
   generateHint,
   referenceError = '',
   onMultipleFiles,
+  referenceGrid,
   generationColumns,
   generationRows,
   onGenerationColumnsChange,
@@ -90,6 +92,15 @@ export default function ReferencePanel({
     Math.min(64, Number.parseInt(generationRows, 10) || 1),
   )
   const generationTotal = parsedGenerationColumns * parsedGenerationRows
+  const referenceGridTotal = referenceGrid?.total ?? 1
+  // Os campos manuais ficam escondidos por padrão. Aparecem se o usuário pedir
+  // ou se a detecção não conseguiu dividir a folha (1×1) — aí são o fallback.
+  const [manualFramesOpen, setManualFramesOpen] = useState(
+    () => generationTotal !== referenceGridTotal,
+  )
+  const detectionUncertain = Boolean(reference) && referenceGridTotal <= 1
+  const showManualFrames =
+    Boolean(reference) && (manualFramesOpen || detectionUncertain)
 
   function openPicker() {
     inputRef.current?.click()
@@ -222,59 +233,100 @@ export default function ReferencePanel({
             </Alert>
           )}
 
-          <div className="mt-3 border-t border-white/10 pt-3">
-            <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
-              <Grid3X3 className="size-3.5 text-cyan-400" />
-              Frames a Gerar
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label
-                  className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-slate-400"
-                  htmlFor="generation-columns"
-                >
-                  Colunas
-                </label>
-                <input
-                  id="generation-columns"
-                  type="number"
-                  min={1}
-                  max={64}
-                  value={generationColumns}
-                  onChange={(event) =>
-                    onGenerationColumnsChange(event.target.value)
-                  }
-                  className={inputClass}
-                />
+          {showManualFrames ? (
+            <div className="mt-3 border-t border-white/10 pt-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
+                  <Grid3X3 className="size-3.5 text-cyan-400" />
+                  Frames a Gerar
+                </p>
+                {!detectionUncertain && (
+                  <button
+                    type="button"
+                    onClick={() => setManualFramesOpen(false)}
+                    className="text-[10px] font-semibold text-slate-500 transition hover:text-slate-300"
+                  >
+                    Ocultar
+                  </button>
+                )}
               </div>
-              <div>
-                <label
-                  className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-slate-400"
-                  htmlFor="generation-rows"
-                >
-                  Linhas
-                </label>
-                <input
-                  id="generation-rows"
-                  type="number"
-                  min={1}
-                  max={64}
-                  value={generationRows}
-                  onChange={(event) =>
-                    onGenerationRowsChange(event.target.value)
-                  }
-                  className={inputClass}
-                />
+
+              {detectionUncertain && (
+                <p className="mb-2 rounded-md border border-amber-400/20 bg-amber-400/10 px-2 py-1.5 text-[10px] leading-relaxed text-amber-200">
+                  A detecção automática não conseguiu dividir a folha. Informe a
+                  grade real (ex.: 4×2 = 8 frames).
+                </p>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label
+                    className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-slate-400"
+                    htmlFor="generation-columns"
+                  >
+                    Colunas
+                  </label>
+                  <input
+                    id="generation-columns"
+                    type="number"
+                    min={1}
+                    max={64}
+                    value={generationColumns}
+                    onChange={(event) => {
+                      setManualFramesOpen(true)
+                      onGenerationColumnsChange(event.target.value)
+                    }}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label
+                    className="mb-1 flex items-center gap-1 text-[11px] font-semibold text-slate-400"
+                    htmlFor="generation-rows"
+                  >
+                    Linhas
+                  </label>
+                  <input
+                    id="generation-rows"
+                    type="number"
+                    min={1}
+                    max={64}
+                    value={generationRows}
+                    onChange={(event) => {
+                      setManualFramesOpen(true)
+                      onGenerationRowsChange(event.target.value)
+                    }}
+                    className={inputClass}
+                  />
+                </div>
               </div>
+              <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+                A IA desenha {parsedGenerationColumns}×{parsedGenerationRows} ={' '}
+                <strong className="text-slate-300">
+                  {generationTotal} frame(s)
+                </strong>
+                . É independente da grade de recorte.
+              </p>
             </div>
-            <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-              A IA desenha {parsedGenerationColumns}×{parsedGenerationRows} ={' '}
-              <strong className="text-slate-300">
-                {generationTotal} frame(s)
-              </strong>
-              . É independente da grade de recorte.
-            </p>
-          </div>
+          ) : reference ? (
+            <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
+              <p className="text-[10px] text-slate-500">
+                Frames a gerar:{' '}
+                <strong className="text-slate-300">
+                  {parsedGenerationColumns}×{parsedGenerationRows} ={' '}
+                  {generationTotal}
+                </strong>
+              </p>
+              <button
+                type="button"
+                onClick={() => setManualFramesOpen(true)}
+                className="inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-1 text-[10px] font-semibold text-slate-400 transition hover:border-cyan-400/30 hover:text-cyan-300"
+              >
+                <Grid3X3 className="size-3" />
+                Ajustar
+              </button>
+            </div>
+          ) : null}
         </div>
       </Card>
 

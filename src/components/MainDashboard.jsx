@@ -2101,6 +2101,7 @@ export default function MainDashboard() {
             }
             generationColumns={generationColumns}
             generationRows={generationRows}
+            referenceGrid={effectiveGrid}
             onGenerationColumnsChange={handleGenerationColumnsChange}
             onGenerationRowsChange={handleGenerationRowsChange}
           />
