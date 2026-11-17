@@ -639,12 +639,9 @@ export default function PreviewPanel({
         )}
       </Card>
 
-      {/* Correção em lote e outros painéis passados pelo dashboard */}
-      {children}
-
-      {/* Filmstrip */}
+      {/* Animation Frames */}
       <Card
-        title="Filmstrip"
+        title="Animation Frames"
         subtitle="Todos os frames individuais"
         icon={Film}
         badge={<Pill tone={hasFrames ? 'cyan' : 'neutral'}>{displayFrames.length} frames</Pill>}
@@ -729,6 +726,9 @@ export default function PreviewPanel({
           </p>
         )}
       </Card>
+
+      {/* Correção em lote e outros painéis passados pelo dashboard */}
+      {children}
     </div>
   )
 }

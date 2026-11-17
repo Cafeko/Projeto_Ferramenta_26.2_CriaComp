@@ -361,7 +361,7 @@ duas colunas em tablets):
 - **`[ GERAR NOVO SPRITESHEET ]`** limpa o histórico e gera tudo do zero,
   enviando a referência inteira e o número real de frames para a IA.
 
-### Coluna central — preview e filmstrip
+### Coluna central — preview e Animation Frames
 - Player lado a lado com a **animação original** e a **nova animação**, com
   seletor de **Modo: Frame a frame** ou **Animação**.
   No modo **Frame a frame** aparecem **Anterior/Próximo** e o campo **Frame N de
@@ -375,15 +375,16 @@ duas colunas em tablets):
 - Na **tela cheia** também há **Anterior/Próximo**, alternância entre
   **Animação** e **Frame a frame** e o controle de **FPS** quando em animação;
   `←`/`→` trocam de frame e `Esc` fecha.
-- **Correção em lote:** fica logo abaixo dos frames; a instrução é aplicada à
-  spritesheet inteira, enviada como uma única imagem em
+- **Animation Frames** com os frames PNG numerados e o botão
+  **`[ Editar Frame ]`** em cada um. A janela de edição se ajusta à tela (com
+  rolagem) e a correção individual envia só aquele frame. A correção é guardada
+  como **candidata**: a janela mostra o frame atual e o corrigido e só substitui
+  quando você escolhe `[ USAR FRAME CORRIGIDO ]` (ou descarta com
+  `[ MANTER FRAME ATUAL ]`). Depois de aplicar, a spritesheet é remontada
+  automaticamente.
+- **Correção em lote:** fica **abaixo do Animation Frames**; a instrução é
+  aplicada à spritesheet inteira, enviada como uma única imagem em
   `previous_generated_images` para preservar o contexto.
-- Filmstrip com os frames PNG numerados e o botão **`[ Editar Frame ]`** em cada
-  um. A janela de edição se ajusta à tela (com rolagem) e a correção individual
-  envia só aquele frame. A correção é guardada como **candidata**: a janela
-  mostra o frame atual e o corrigido e só substitui quando você escolhe
-  `[ USAR FRAME CORRIGIDO ]` (ou descarta com `[ MANTER FRAME ATUAL ]`). Depois
-  de aplicar, a spritesheet é remontada automaticamente.
 
 ### Coluna direita — grade, custo e exportação
 - **Grade de Recorte:** fatia a referência e o resultado usando Colunas/Linhas.
