@@ -287,7 +287,6 @@ export default function SettingsModal({
               />
             </div>
           </section>
-        </div>
 
           <section>
             <h3 className="mb-2 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
@@ -309,6 +308,7 @@ export default function SettingsModal({
               </a>
             </div>
           </section>
+        </div>
 
         <footer className="flex justify-end border-t border-white/5 px-4 py-3">
           <button
