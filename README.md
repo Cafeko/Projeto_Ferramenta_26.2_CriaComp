@@ -372,9 +372,9 @@ duas colunas em tablets):
 - Na **tela cheia** também há **Anterior/Próximo**, alternância entre
   **Animação** e **Frame a frame** e o controle de **FPS** quando em animação;
   `←`/`→` trocam de frame e `Esc` fecha.
-- **Grade de Recorte:** fatia a referência e o resultado usando Colunas/Linhas.
-  A quantidade de frames desenhada pela IA vem de **Frames a Gerar**, na coluna
-  esquerda, e não é alterada por esta grade.
+- **Correção em lote:** fica logo abaixo dos frames; a instrução é aplicada à
+  spritesheet inteira, enviada como uma única imagem em
+  `previous_generated_images` para preservar o contexto.
 - Filmstrip com os frames PNG numerados e o botão **`[ Editar Frame ]`** em cada
   um. A janela de edição se ajusta à tela (com rolagem) e a correção individual
   envia só aquele frame. A correção é guardada como **candidata**: a janela
@@ -382,9 +382,11 @@ duas colunas em tablets):
   `[ USAR FRAME CORRIGIDO ]` (ou descarta com `[ MANTER FRAME ATUAL ]`). Depois
   de aplicar, a spritesheet é remontada automaticamente.
 
-### Coluna direita — correção e exportação
-- **Correção em lote:** instrução textual aplicada à spritesheet inteira, enviada
-  como uma única imagem em `previous_generated_images` para preservar o contexto.
+### Coluna direita — grade, custo e exportação
+- **Grade de Recorte:** fatia a referência e o resultado usando Colunas/Linhas.
+  A quantidade de frames desenhada pela IA vem de **Frames a Gerar**, na coluna
+  esquerda, e não é alterada por esta grade.
+- **Métricas:** tokens, custo estimado, tempo e qualidade por chamada.
 - **Exportação:** `[ EXPORTAR SPRITESHEET PNG (GRID) ]` e
   `[ EXPORTAR GIF ANIMADO ]`, ambos processados localmente pela Canvas API.
 

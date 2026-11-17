@@ -12,6 +12,7 @@ import ApiConfigPanel from './dashboard/ApiConfigPanel'
 import CorrectionPanel from './dashboard/CorrectionPanel'
 import ExportPanel from './dashboard/ExportPanel'
 import FrameEditModal from './FrameEditModal'
+import GridPanel from './dashboard/GridPanel'
 import PreviewPanel from './dashboard/PreviewPanel'
 import ReferencePanel from './dashboard/ReferencePanel'
 import UsagePanel from './dashboard/UsagePanel'
@@ -2121,33 +2122,38 @@ export default function MainDashboard() {
             onEditFrame={handleEditFrame}
             editingFrame={modalOpen ? modalFrameIndex : null}
             slicing={slicingResult}
-            columns={columns}
-            rows={rows}
-            autoSlice={autoSlice}
-            referenceGrid={effectiveGrid}
-            generationColumns={generationColumns}
-            generationRows={generationRows}
-            onColumnsChange={setColumns}
-            onRowsChange={setRows}
-            onAutoSliceChange={setAutoSlice}
-          />
+          >
+            <CorrectionPanel
+              prompt={correctionPrompt}
+              onPromptChange={setCorrectionPrompt}
+              onApply={handleApplyCorrection}
+              busy={correcting}
+              disabled={generating || modalOpen}
+              editingFrame={modalOpen ? modalFrameIndex : correctionFrame}
+              onClearEditing={() => {
+                setCorrectionFrame(null)
+                setModalOpen(false)
+              }}
+              frameCount={frames.length}
+              error={correctionError}
+              elapsed={elapsed}
+            />
+          </PreviewPanel>
         </section>
 
         <aside className="grid gap-4 md:grid-cols-2 lg:col-span-2 xl:col-span-1 xl:block xl:space-y-4">
-          <CorrectionPanel
-            prompt={correctionPrompt}
-            onPromptChange={setCorrectionPrompt}
-            onApply={handleApplyCorrection}
-            busy={correcting}
-            disabled={generating || modalOpen}
-            editingFrame={modalOpen ? modalFrameIndex : correctionFrame}
-            onClearEditing={() => {
-              setCorrectionFrame(null)
-              setModalOpen(false)
-            }}
+          <GridPanel
+            referenceGrid={effectiveGrid}
+            generationColumns={generationColumns}
+            generationRows={generationRows}
+            columns={columns}
+            rows={rows}
+            autoSlice={autoSlice}
+            slicing={slicingResult}
             frameCount={frames.length}
-            error={correctionError}
-            elapsed={elapsed}
+            onColumnsChange={setColumns}
+            onRowsChange={setRows}
+            onAutoSliceChange={setAutoSlice}
           />
 
           <UsagePanel

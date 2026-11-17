@@ -4,10 +4,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Film,
-  Grid3X3,
   ImageOff,
   LayoutGrid,
-  Loader2,
   Maximize2 as Maximize,
   RefreshCw,
   Square,
@@ -16,7 +14,7 @@ import {
   ZoomOut,
 } from 'lucide-react'
 
-import { Alert, Card, Pill, inputClass, labelClass } from './ui'
+import { Alert, Card, Pill } from './ui'
 
 const MIN_ZOOM = 1
 const MAX_ZOOM = 8
@@ -440,15 +438,7 @@ function FrameView({
  *   onEditFrame: (index: number) => void,
  *   editingFrame: number | null,
  *   slicing: boolean,
- *   referenceGrid: { columns: number, rows: number, total?: number },
- *   columns: string,
- *   rows: string,
- *   autoSlice: boolean,
- *   generationColumns: string,
- *   generationRows: string,
- *   onColumnsChange: (value: string) => void,
- *   onRowsChange: (value: string) => void,
- *   onAutoSliceChange: (value: boolean) => void,
+ *   children?: import('react').ReactNode,
  * }} props
  */
 export default function PreviewPanel({
@@ -466,15 +456,7 @@ export default function PreviewPanel({
   onEditFrame,
   editingFrame,
   slicing,
-  referenceGrid,
-  columns,
-  rows,
-  autoSlice,
-  generationColumns,
-  generationRows,
-  onColumnsChange,
-  onRowsChange,
-  onAutoSliceChange,
+  children,
 }) {
   const refs = Array.isArray(referenceFrames) ? referenceFrames : []
   const gens = Array.isArray(frames) ? frames : []
@@ -497,18 +479,6 @@ export default function PreviewPanel({
   // Os frames já chegam fatiados do MainDashboard. A grade é recalculada lá
   // a partir do spritesheet bruto, então trocar colunas/linhas não apaga nada.
   const displayFrames = gens
-  const referenceTotal = referenceGrid
-    ? referenceGrid.total ?? referenceGrid.columns * referenceGrid.rows
-    : 0
-  const requestedColumns = Math.max(
-    1,
-    Math.min(64, Number.parseInt(generationColumns, 10) || 1),
-  )
-  const requestedRows = Math.max(
-    1,
-    Math.min(64, Number.parseInt(generationRows, 10) || 1),
-  )
-  const requestedTotal = requestedColumns * requestedRows
 
   return (
     <div className="space-y-4">
@@ -669,93 +639,8 @@ export default function PreviewPanel({
         )}
       </Card>
 
-      {/* Controle de Grid - aqui no meio, não apaga a imagem ao mudar */}
-      <Card
-        title="Grade de Recorte"
-        subtitle="Recorta a referência e o resultado"
-        icon={Grid3X3}
-        bodyClassName="p-3"
-      >
-        <div className="space-y-3">
-          <div className="rounded-lg border border-cyan-400/15 bg-cyan-400/[0.04] px-2.5 py-2 text-[11px] leading-relaxed text-slate-400">
-            A IA gera{' '}
-            <strong className="text-cyan-300">
-              {requestedTotal} frame{requestedTotal === 1 ? '' : 's'}
-            </strong>{' '}
-            na grade{' '}
-            <strong className="text-cyan-300">
-              {requestedColumns}×{requestedRows}
-            </strong>{' '}
-            (definida em <strong className="text-slate-300">Frames a Gerar</strong>
-            , à esquerda). Esta grade abaixo serve apenas para recortar a
-            referência e o resultado.
-          </div>
-
-          <label className="flex cursor-pointer items-center justify-between gap-2">
-            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
-              <Grid3X3 className="size-3.5 text-cyan-400" />
-              Auto-fatiar grid (exibição)
-            </span>
-            <input
-              type="checkbox"
-              checked={autoSlice}
-              onChange={(event) => onAutoSliceChange(event.target.checked)}
-              className="size-4 accent-cyan-400"
-            />
-          </label>
-
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className={`${labelClass} mb-1`} htmlFor="grid-columns">
-                Colunas
-              </label>
-              <input
-                id="grid-columns"
-                type="number"
-                min={1}
-                max={64}
-                value={columns}
-                disabled={!autoSlice}
-                onChange={(event) => onColumnsChange(event.target.value)}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <label className={`${labelClass} mb-1`} htmlFor="grid-rows">
-                Linhas
-              </label>
-              <input
-                id="grid-rows"
-                type="number"
-                min={1}
-                max={64}
-                value={rows}
-                disabled={!autoSlice}
-                onChange={(event) => onRowsChange(event.target.value)}
-                className={inputClass}
-              />
-            </div>
-          </div>
-
-          <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
-            <span className="text-slate-500">
-              {slicing ? (
-                <span className="inline-flex items-center gap-1.5 text-cyan-300">
-                  <Loader2 className="size-3 animate-spin" />
-                  aplicando grade…
-                </span>
-              ) : (
-                `${displayFrames.length} frame${displayFrames.length === 1 ? '' : 's'}`
-              )}
-            </span>
-            {!autoSlice && (
-              <span className="text-amber-300 text-[10px]">
-                Grade de recorte desativada
-              </span>
-            )}
-          </div>
-        </div>
-      </Card>
+      {/* Correção em lote e outros painéis passados pelo dashboard */}
+      {children}
 
       {/* Filmstrip */}
       <Card
