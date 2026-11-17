@@ -682,18 +682,22 @@ def _download_image(
     provider: str,
     api_key: str | None = None,
 ) -> ImagePayload:
-    headers: dict[str, str] = {}
-    if api_key and provider == "replicate":
-        headers["Authorization"] = f"Bearer {api_key}"
+    auth_headers = (
+        {"Authorization": f"Bearer {api_key}"}
+        if api_key and provider == "replicate"
+        else {}
+    )
 
     try:
-        response = requests.get(
-            url, headers=headers, timeout=_DOWNLOAD_TIMEOUT, stream=True
-        )
-        # Alguns links do Replicate são assinados e recusam o header Bearer.
-        if response.status_code in (401, 403) and headers:
+        # Os links de saída do Replicate são assinados e normalmente recusam o
+        # header Authorization (o CDN responde HTTP 400). Tentamos sem
+        # autenticação primeiro e só usamos a chave se o link exigir.
+        response = requests.get(url, timeout=_DOWNLOAD_TIMEOUT, stream=True)
+        if response.status_code in (401, 403) and auth_headers:
             response.close()
-            response = requests.get(url, timeout=_DOWNLOAD_TIMEOUT, stream=True)
+            response = requests.get(
+                url, headers=auth_headers, timeout=_DOWNLOAD_TIMEOUT, stream=True
+            )
     except requests.Timeout as exc:
         raise ApiError(
             504,
@@ -714,6 +718,11 @@ def _download_image(
 
     try:
         if response.status_code >= 400:
+            try:
+                upstream_body = _truncate(response.text or "", 200)
+            except Exception:  # noqa: BLE001 - corpo de erro é opcional
+                upstream_body = ""
+            host = url.split("/")[2] if url.count("/") >= 2 else "host"
             raise ApiError(
                 502,
                 "A imagem foi gerada, mas o download falhou "
@@ -721,6 +730,7 @@ def _download_image(
                 code="download_failed",
                 provider=provider,
                 provider_status=response.status_code,
+                details=_truncate(f"{host} -> {upstream_body}", 300),
             )
         content = bytearray()
         for chunk in response.iter_content(chunk_size=64 * 1024):
@@ -3338,12 +3348,14 @@ def _replicate_wait(
 
 def _replicate_iter_urls(value: Any) -> Iterable[str]:
     if isinstance(value, str):
-        if value.startswith(("http://", "https://", "data:image/")):
-            yield value
+        candidate = value.strip()
+        if candidate.startswith(("http://", "https://", "data:image/")):
+            yield candidate
     elif isinstance(value, dict):
         url = value.get("url")
-        if isinstance(url, str) and url.startswith(("http://", "https://", "data:image/")):
-            yield url
+        candidate = url.strip() if isinstance(url, str) else ""
+        if candidate.startswith(("http://", "https://", "data:image/")):
+            yield candidate
         else:
             for child in value.values():
                 yield from _replicate_iter_urls(child)
