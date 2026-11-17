@@ -16,7 +16,8 @@ import { formatElapsed } from '../../lib/api'
 import { Alert, Card, Field, HelpTip, PrimaryButton, inputClass } from './ui'
 
 /**
- * Coluna esquerda: referência de movimento, prompts e botão de geração.
+ * Faixa superior (ao lado da configuração da API): referência de movimento,
+ * prompts e botão de geração.
  *
  * Os presets rápidos foram retirados da interface, mas o gerador procedural
  * continua disponível em `src/utils/presets.js` para uso futuro.
@@ -163,7 +164,7 @@ export default function ReferencePanel({
           </>
         }
       >
-        <div className="space-y-4">
+        <div className="grid gap-4 xl:grid-cols-3">
           <section>
             <div className="mb-2 flex items-center justify-between gap-2">
               <h3 className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-slate-300 uppercase">
@@ -374,7 +375,7 @@ export default function ReferencePanel({
         </div>
         </section>
 
-        <section className="border-t border-white/10 pt-4">
+        <section className="border-t border-white/10 pt-4 xl:border-t-0 xl:border-l xl:pt-0 xl:pl-4">
           <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-slate-300 uppercase">
             <User className="size-3.5 text-cyan-400" />
             Aparência do Personagem
@@ -478,7 +479,7 @@ export default function ReferencePanel({
           </div>
         </section>
 
-        <section className="border-t border-white/10 pt-4">
+        <section className="border-t border-white/10 pt-4 xl:border-t-0 xl:border-l xl:pt-0 xl:pl-4">
           <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-slate-300 uppercase">
             <Palette className="size-3.5 text-cyan-400" />
             Estilo de Arte

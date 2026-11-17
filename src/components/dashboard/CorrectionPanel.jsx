@@ -5,7 +5,7 @@ import { formatElapsed } from '../../lib/api'
 import { Alert, Card, PrimaryButton, inputClass } from './ui'
 
 /**
- * Coluna direita: correção em lote ou de um frame específico.
+ * Faixa 3 (ao lado do Animation Frames): correção em lote ou de um frame.
  *
  * @param {{
  *   prompt: string,

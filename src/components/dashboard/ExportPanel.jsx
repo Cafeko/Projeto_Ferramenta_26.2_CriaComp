@@ -3,7 +3,7 @@ import { Download, Film, Grid3X3 } from 'lucide-react'
 import { Card, SecondaryButton, inputClass, labelClass } from './ui'
 
 /**
- * Coluna direita: exportação local da spritesheet e do GIF.
+ * Faixa 2 (ao lado da visualização): exportação local da spritesheet e do GIF.
  *
  * @param {{
  *   frames: string[],

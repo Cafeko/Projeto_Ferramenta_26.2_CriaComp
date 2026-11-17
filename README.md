@@ -331,17 +331,17 @@ para outro lugar além do backend do próprio projeto.
 ## 🖥️ Dashboard principal
 
 `src/components/MainDashboard.jsx` concentra o estado e as chamadas à API; a
-interface é organizada em **três faixas horizontais** (empilham no celular):
+interface é organizada em **quatro faixas horizontais** (empilham no celular):
 
-### Faixa superior — configuração, visualização e grade
-- **Configuração da API** (topo da faixa, à esquerda): **BYOK** com provedor,
-  chave (com botão `Validar`), lista dinâmica de modelos e link `Obter chave`
-  para o console de cada provedor.
-- **Referências e Personagem** (abaixo da API, mesma coluna): bloco único com
-  três seções separadas.
+### Faixa 1 — configuração e referências (largura toda)
+- **Configuração da API** (à esquerda): **BYOK** com provedor, chave (com botão
+  `Validar`), lista dinâmica de modelos e link `Obter chave` para o console de
+  cada provedor.
+- **Referências e Personagem** (à direita, ocupando o restante da faixa): bloco
+  único com três seções separadas, lado a lado em telas largas.
   - **Referência de movimento:** drag & drop de PNG/spritesheet. O app detecta
     uma grade provável para pré-preencher a grade de recorte e a de geração. A
-    grade de recorte (painel central) só exibe/fatia; a grade de geração fica em
+    grade de recorte (painel seguinte) só exibe/fatia; a grade de geração fica em
     **Frames a Gerar**, dentro desta seção, e define `frame_count`.
   - **Aparência do personagem:** texto e/ou imagem de referência apenas para a
     identidade (roupa, cores, cabelo, equipamento e proporções), sem afetar a
@@ -358,11 +358,13 @@ interface é organizada em **três faixas horizontais** (empilham no celular):
 - **`[ GERAR NOVO SPRITESHEET ]`** limpa o histórico e gera tudo do zero,
   enviando a referência inteira e o número real de frames para a IA.
 
-- **Visualização dos frames** (centro da faixa): player lado a lado com a **animação original** e a **nova animação**, com
-  seletor de **Modo: Frame a frame** ou **Animação**.
-  No modo **Frame a frame** aparecem **Anterior/Próximo** e o campo **Frame N de
-  M** (navegação circular: do último volta ao primeiro e vice-versa). No modo
-  **Animação** aparece um **slider de FPS (1–60)** com o valor em `fps`.
+### Faixa 2 — visualização e grade
+- **Visualização dos frames** (à esquerda): player lado a lado com a **animação
+  original** e a **nova animação**, com seletor de **Modo: Frame a frame** ou
+  **Animação**. No modo **Frame a frame** aparecem **Anterior/Próximo** e o campo
+  **Frame N de M** (navegação circular: do último volta ao primeiro e
+  vice-versa). No modo **Animação** aparece um **slider de FPS (1–60)** com o
+  valor em `fps`.
 - Cada quadro tem **zoom (100%–800%)**, **arraste** para reposicionar e
   **tela cheia** (`Esc` fecha). A roda do mouse e os botões `−`/`+` controlam o
   zoom; clicar na porcentagem, dar duplo clique ou pressionar `0` redefine.
@@ -376,11 +378,11 @@ interface é organizada em **três faixas horizontais** (empilham no celular):
   desfeita.
 - **Grade de Recorte** (à direita da visualização): fatia a referência e o
   resultado usando Colunas/Linhas. A quantidade de frames desenhada pela IA vem
-  de **Frames a Gerar**, na coluna esquerda, e não é alterada por esta grade.
+  de **Frames a Gerar**, na faixa anterior, e não é alterada por esta grade.
 - **Exportação** (abaixo da grade): `[ EXPORTAR SPRITESHEET PNG (GRID) ]` e
   `[ EXPORTAR GIF ANIMADO ]`, ambos processados localmente pela Canvas API.
 
-### Faixa do meio — frames individuais e correção
+### Faixa 3 — frames individuais e correção
 - **Animation Frames** (à esquerda) com os frames PNG numerados e o botão
   **`[ Editar Frame ]`** em cada um. A janela de edição se ajusta à tela (com
   rolagem) e a correção individual envia só aquele frame. A correção é guardada
@@ -392,7 +394,7 @@ interface é organizada em **três faixas horizontais** (empilham no celular):
   inteira, enviada como uma única imagem em `previous_generated_images` para
   preservar o contexto.
 
-### Faixa inferior — resumo e privacidade
+### Faixa 4 — resumo e privacidade
 - **Resumo da IA:** totais gerais (gasto, chamadas com sucessos/erros, tokens,
   tempo, qualidade média e imagens geradas) ao lado dos dados da **imagem gerada
   mais recentemente** — modelo, API, tipo, data/hora, duração, tokens, custo,

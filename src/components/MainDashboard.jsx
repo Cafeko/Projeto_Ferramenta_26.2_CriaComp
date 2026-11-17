@@ -2131,82 +2131,84 @@ export default function MainDashboard({
   return (
     <>
       <main className="relative mx-auto w-full max-w-[1600px] space-y-4 px-4 pt-5 pb-12">
-        {/* Faixa 1 — API + inputs, visualização dos frames e grade/exportação */}
+        {/* Faixa 1 — API + inputs, ocupando a largura toda */}
         <section
-          aria-label="Configuração, visualização e grade"
-          className="grid gap-4 lg:grid-cols-2 xl:grid-cols-[340px_minmax(0,1fr)_320px]"
+          aria-label="Configuração e referências"
+          className="grid items-start gap-4 xl:grid-cols-[340px_minmax(0,1fr)]"
         >
-          <div className="space-y-4">
-            <ApiConfigPanel
-              provider={provider}
-              onProviderChange={handleProviderChange}
-              apiKey={apiKey}
-              onApiKeyChange={handleApiKeyChange}
-              onValidate={handleValidateKey}
-              status={keyStatus}
-              error={keyError}
-              models={models}
-              modelId={modelId}
-              onModelChange={handleModelChange}
-              modelsWarning={modelsWarning}
-              rememberKey={rememberKey}
-              onRememberKeyChange={handleRememberKeyChange}
-              onClearKey={handleClearSavedKey}
-            />
+          <ApiConfigPanel
+            provider={provider}
+            onProviderChange={handleProviderChange}
+            apiKey={apiKey}
+            onApiKeyChange={handleApiKeyChange}
+            onValidate={handleValidateKey}
+            status={keyStatus}
+            error={keyError}
+            models={models}
+            modelId={modelId}
+            onModelChange={handleModelChange}
+            modelsWarning={modelsWarning}
+            rememberKey={rememberKey}
+            onRememberKeyChange={handleRememberKeyChange}
+            onClearKey={handleClearSavedKey}
+          />
 
-            <ReferencePanel
-              reference={reference}
-              onFileSelected={handleFileSelected}
-              onClearReference={handleClearReference}
-              appearance={appearance}
-              onAppearanceChange={setAppearance}
-              appearanceReference={appearanceReference}
-              onAppearanceFileSelected={handleAppearanceFileSelected}
-              onClearAppearanceReference={handleClearAppearanceReference}
-              artStyle={artStyle}
-              onArtStyleChange={setArtStyle}
-              styleReference={styleReference}
-              onStyleFileSelected={handleStyleFileSelected}
-              onClearStyleReference={handleClearStyleReference}
-              onGenerate={handleGenerate}
-              generating={generating}
-              elapsed={elapsed}
-              canGenerate={canGenerate}
-              generateHint={generateHint}
-              referenceError={referenceError}
-              onMultipleFiles={() =>
-                pushToast(
-                  'Envie apenas uma imagem por vez em cada campo. Usei a primeira.',
-                  'info',
-                )
-              }
-              generationColumns={generationColumns}
-              generationRows={generationRows}
-              referenceGrid={effectiveGrid}
-              onGenerationColumnsChange={handleGenerationColumnsChange}
-              onGenerationRowsChange={handleGenerationRowsChange}
-            />
-          </div>
+          <ReferencePanel
+            reference={reference}
+            onFileSelected={handleFileSelected}
+            onClearReference={handleClearReference}
+            appearance={appearance}
+            onAppearanceChange={setAppearance}
+            appearanceReference={appearanceReference}
+            onAppearanceFileSelected={handleAppearanceFileSelected}
+            onClearAppearanceReference={handleClearAppearanceReference}
+            artStyle={artStyle}
+            onArtStyleChange={setArtStyle}
+            styleReference={styleReference}
+            onStyleFileSelected={handleStyleFileSelected}
+            onClearStyleReference={handleClearStyleReference}
+            onGenerate={handleGenerate}
+            generating={generating}
+            elapsed={elapsed}
+            canGenerate={canGenerate}
+            generateHint={generateHint}
+            referenceError={referenceError}
+            onMultipleFiles={() =>
+              pushToast(
+                'Envie apenas uma imagem por vez em cada campo. Usei a primeira.',
+                'info',
+              )
+            }
+            generationColumns={generationColumns}
+            generationRows={generationRows}
+            referenceGrid={effectiveGrid}
+            onGenerationColumnsChange={handleGenerationColumnsChange}
+            onGenerationRowsChange={handleGenerationRowsChange}
+          />
+        </section>
 
-          <div className="min-w-0 space-y-4">
-            <PreviewPanel
-              referenceFrames={referenceFrames}
-              frames={frames}
-              fps={fps}
-              onFpsChange={setFps}
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
-              currentFrameIndex={currentFrameIndex}
-              onCurrentFrameIndexChange={setCurrentFrameIndex}
-              generating={generating}
-              referenceBusy={referenceBusy}
-              generationError={generationError}
-              slicing={slicingResult}
-              onRemoveGenerated={() => setRemoveDialogOpen(true)}
-            />
-          </div>
+        {/* Faixa 2 — visualização dos frames e grade/exportação */}
+        <section
+          aria-label="Visualização e grade"
+          className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]"
+        >
+          <PreviewPanel
+            referenceFrames={referenceFrames}
+            frames={frames}
+            fps={fps}
+            onFpsChange={setFps}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            currentFrameIndex={currentFrameIndex}
+            onCurrentFrameIndexChange={setCurrentFrameIndex}
+            generating={generating}
+            referenceBusy={referenceBusy}
+            generationError={generationError}
+            slicing={slicingResult}
+            onRemoveGenerated={() => setRemoveDialogOpen(true)}
+          />
 
-          <div className="grid gap-4 md:grid-cols-2 lg:col-span-2 xl:col-span-1 xl:block xl:space-y-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:block xl:space-y-4">
             <GridPanel
               referenceGrid={effectiveGrid}
               generationColumns={generationColumns}
@@ -2232,7 +2234,7 @@ export default function MainDashboard({
           </div>
         </section>
 
-        {/* Faixa 2 — frames individuais e correção em lote */}
+        {/* Faixa 3 — frames individuais e correção em lote */}
         <section
           aria-label="Frames e correção"
           className="grid gap-4 lg:grid-cols-2"
@@ -2262,7 +2264,7 @@ export default function MainDashboard({
           />
         </section>
 
-        {/* Faixa 3 — resumo de métricas, custos e tempo */}
+        {/* Faixa 4 — resumo de métricas, custos e tempo */}
         <section
           aria-label="Resumo de métricas"
           className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]"

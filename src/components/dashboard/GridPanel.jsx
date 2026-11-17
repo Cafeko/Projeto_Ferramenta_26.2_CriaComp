@@ -5,8 +5,8 @@ import { Card, inputClass, labelClass } from './ui'
 /**
  * Grade usada apenas para recortar a referência e o resultado em frames.
  *
- * A quantidade de frames desenhada pela IA vem de "Frames a Gerar" (coluna
- * esquerda) e é independente destes campos.
+ * A quantidade de frames desenhada pela IA vem de "Frames a Gerar" (painel
+ * Referências e Personagem) e é independente destes campos.
  *
  * @param {{
  *   referenceGrid: { columns: number, rows: number, total?: number },
@@ -58,9 +58,10 @@ export default function GridPanel({
             Colunas × Linhas. Ela não altera quantos frames a IA desenha.
           </p>
           <p>
-            A quantidade desenhada vem de <strong>Frames a Gerar</strong>, na
-            coluna esquerda. Ative <strong>Auto-fatiar</strong> para aplicar a
-            grade à exibição; desligado, a folha é tratada como imagem única.
+            A quantidade desenhada vem de <strong>Frames a Gerar</strong>, em{' '}
+            <strong>Referências e Personagem</strong>. Ative{' '}
+            <strong>Auto-fatiar</strong> para aplicar a grade à exibição;
+            desligado, a folha é tratada como imagem única.
           </p>
         </>
       }
