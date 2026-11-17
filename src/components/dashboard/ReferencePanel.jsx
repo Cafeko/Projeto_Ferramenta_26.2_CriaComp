@@ -136,32 +136,47 @@ export default function ReferencePanel({
   return (
     <div className="space-y-4">
       <Card
-        title="Referência de Movimento"
-        subtitle="Poses que a IA deve seguir"
-        icon={Film}
-        badge={
-          reference ? (
-            <span className="text-[10px] font-semibold text-slate-500">
-              {reference.width}×{reference.height}
-            </span>
-          ) : null
-        }
+        title="Referências e Personagem"
+        subtitle="Movimento, aparência e estilo"
+        icon={Sparkles}
         help={
           <>
             <p>
-              Envie a spritesheet com as poses que a IA deve seguir. Ela é usada
-              apenas como referência de layout/pose, não como identidade ou
+              <strong>Referência de movimento:</strong> envie a spritesheet com
+              as poses. Ela define apenas layout, posição e silhueta.
+            </p>
+            <p>
+              <strong>Aparência:</strong> identidade do personagem (roupa, cores,
+              cabelo, equipamento e proporções), por texto e/ou imagem.
+            </p>
+            <p>
+              <strong>Estilo:</strong> renderização visual (pixel density,
+              paleta, contorno, sombreamento e detalhe), por texto e/ou imagem.
+              Sem estilo informado, a referência de movimento também vale como
               estilo.
             </p>
             <p>
-              A detecção tenta preencher a grade de recorte e a grade de geração.
-              Se ela errar, ajuste a grade em <strong>Grade de Recorte</strong> e,
-              se necessário, os frames em <strong>Frames a Gerar</strong>.
+              A detecção preenche a grade de recorte e a de geração; ajuste em
+              <strong> Grade de Recorte</strong> e <strong>Frames a Gerar</strong>{' '}
+              se necessário.
             </p>
           </>
         }
       >
-        <div>
+        <div className="space-y-4">
+          <section>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h3 className="flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-slate-300 uppercase">
+                <Film className="size-3.5 text-cyan-400" />
+                Referência de Movimento
+              </h3>
+              {reference && (
+                <span className="font-mono text-[10px] text-slate-500">
+                  {reference.width}×{reference.height}
+                </span>
+              )}
+            </div>
+            <div>
           <input
             ref={inputRef}
             type="file"
@@ -357,49 +372,15 @@ export default function ReferencePanel({
             </div>
           ) : null}
         </div>
-      </Card>
+        </section>
 
-      <Card
-        title="Descrição do Personagem"
-        subtitle="Quem deve aparecer nos frames"
-        icon={User}
-        help={
-          <>
-            <p>
-              <strong>Aparência</strong> define a identidade do personagem:
-              roupa, cores, cabelo, equipamento e proporções. Pode ser texto e/ou
-              uma imagem de referência.
-            </p>
-            <p>
-              <strong>Estilo</strong> define só a renderização: pixel density,
-              paleta, contorno, sombreamento e nível de detalhe. Pode ser texto
-              e/ou uma imagem de referência.
-            </p>
-            <p>
-              Se você não informar estilo, a própria referência de movimento
-              também vale como estilo.
-            </p>
-          </>
-        }
-      >
-        <div className="space-y-3">
-          <Field
-            label="Aparência do Personagem"
-            htmlFor="appearance-input"
-            help={
-              <>
-                <p>
-                  A imagem de referência de aparência define apenas a identidade
-                  do personagem: roupa, cores, cabelo, equipamento e proporções.
-                  Ela não afeta a pose nem o estilo de arte.
-                </p>
-                <p>
-                  No texto, detalhe cores, roupa, arma, proporções e detalhes
-                  marcantes. O que não couber na resolução será simplificado.
-                </p>
-              </>
-            }
-          >
+        <section className="border-t border-white/10 pt-4">
+          <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-slate-300 uppercase">
+            <User className="size-3.5 text-cyan-400" />
+            Aparência do Personagem
+          </h3>
+          <div className="space-y-3">
+          <Field label="Descrição" htmlFor="appearance-input">
             <textarea
               id="appearance-input"
               rows={3}
@@ -494,27 +475,16 @@ export default function ReferencePanel({
               </div>
             </div>
           </Field>
+          </div>
+        </section>
 
-          <Field
-            label="Estilo de Arte"
-            icon={Palette}
-            htmlFor="style-input"
-            help={
-              <>
-                <p>
-                  A imagem de referência de estilo define apenas a aparência
-                  visual: pixel density, paleta, contorno, sombreamento e nível
-                  de detalhe. Ela não define a pose nem a identidade do
-                  personagem.
-                </p>
-                <p>
-                  No texto, descreva paleta, contorno, iluminação e nível de
-                  detalhe. Se você não enviar texto nem imagem de estilo, a
-                  referência de movimento também será usada como estilo.
-                </p>
-              </>
-            }
-          >
+        <section className="border-t border-white/10 pt-4">
+          <h3 className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-slate-300 uppercase">
+            <Palette className="size-3.5 text-cyan-400" />
+            Estilo de Arte
+          </h3>
+          <div className="space-y-3">
+            <Field label="Descrição" htmlFor="style-input">
             <textarea
               id="style-input"
               rows={2}
@@ -609,6 +579,8 @@ export default function ReferencePanel({
               </div>
             </div>
           </Field>
+          </div>
+        </section>
         </div>
       </Card>
 

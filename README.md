@@ -337,27 +337,23 @@ duas colunas em tablets):
 ### Coluna esquerda — configuração
 - **BYOK:** provedor, chave (com botão `Validar`), lista dinâmica de modelos e
   link `Obter chave` para o console de cada provedor.
-- **Referência de movimento:** drag & drop de PNG/spritesheet. O app **detecta
-  uma grade provável** pelos pixels (transparência ou cor de fundo) apenas para
-  pré-preencher a grade de recorte e a de geração. A **grade de recorte** (painel
-  central) só exibe/fatia; a **grade de geração** fica em **Frames a Gerar**
-  (nesta coluna), é independente e define `frame_count` — por exemplo, uma folha
-  de 8 frames detectada como 1×1 ainda pode ser gerada em 4×2 (= 8 frames).
-- **Frames a Gerar:** colunas × linhas que a IA deve desenhar, dentro do card
-  **Referência de Movimento**, junto do upload. Os campos ficam **ocultos por
-  padrão** (aparece só um resumo com “Ajustar”); abrem quando você clica em
-  **Ajustar** ou automaticamente quando a detecção não consegue dividir a folha
-  (1×1). Não altera o recorte.
+- **Referências e Personagem:** bloco único com três seções separadas.
+  - **Referência de movimento:** drag & drop de PNG/spritesheet. O app detecta
+    uma grade provável para pré-preencher a grade de recorte e a de geração. A
+    grade de recorte (painel central) só exibe/fatia; a grade de geração fica em
+    **Frames a Gerar**, dentro desta seção, e define `frame_count`.
+  - **Aparência do personagem:** texto e/ou imagem de referência apenas para a
+    identidade (roupa, cores, cabelo, equipamento e proporções), sem afetar a
+    pose ou o estilo.
+  - **Estilo de arte:** texto e/ou imagem de referência apenas para a
+    renderização (pixel density, paleta, contorno, sombreamento e detalhe). Sem
+    estilo informado, a referência de movimento também vale como estilo.
+- **Frames a Gerar:** colunas × linhas que a IA deve desenhar, dentro da seção
+  de referência. Os campos ficam **ocultos por padrão** (aparece só um resumo com
+  “Ajustar”); abrem ao clicar em **Ajustar** ou automaticamente quando a detecção
+  não divide a folha (1×1). Não altera o recorte.
 - **Presets rápidos:** removidos da interface; o gerador procedural continua
   guardado em `src/utils/presets.js` para uso futuro.
-- **Prompt:** aparência do personagem e estilo de arte. A aparência pode ser
-  descrita em texto e/ou enviada como **imagem de referência de aparência**
-  (identidade apenas: roupa, cores, cabelo, equipamento), sem afetar pose ou
-  estilo. O estilo pode ser descrito em texto e/ou enviado como **imagem de
-  referência de estilo** independente (clique ou arraste o arquivo para a
-  área). A imagem de pose define apenas poses/posições; a de estilo define
-  apenas a aparência visual. Sem texto e sem imagem de estilo, a referência de
-  movimento também vale como estilo.
 - **`[ GERAR NOVO SPRITESHEET ]`** limpa o histórico e gera tudo do zero,
   enviando a referência inteira e o número real de frames para a IA.
 
@@ -375,6 +371,9 @@ duas colunas em tablets):
 - Na **tela cheia** também há **Anterior/Próximo**, alternância entre
   **Animação** e **Frame a frame** e o controle de **FPS** quando em animação;
   `←`/`→` trocam de frame e `Esc` fecha.
+- **Remover resultado:** o botão no card de visualização apaga a imagem gerada e
+  a cópia salva neste dispositivo. Pede confirmação, porque a ação não pode ser
+  desfeita.
 - **Animation Frames** com os frames PNG numerados e o botão
   **`[ Editar Frame ]`** em cada um. A janela de edição se ajusta à tela (com
   rolagem) e a correção individual envia só aquele frame. A correção é guardada

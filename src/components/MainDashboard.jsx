@@ -433,6 +433,7 @@ export default function MainDashboard() {
   const [modalCandidateFrame, setModalCandidateFrame] = useState(null)
   const [modalApplyingSingle, setModalApplyingSingle] = useState(false)
   const [modalApplyingAll, setModalApplyingAll] = useState(false)
+  const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
 
   /* ------------------- Métricas de tempo e custo ----------------------- */
   // Histórico das chamadas à IA (tempo, tokens, custo). Fica no localStorage
@@ -675,6 +676,35 @@ export default function MainDashboard() {
       'info',
     )
   }, [pushToast])
+
+  const handleConfirmRemoveGenerated = useCallback(async () => {
+    setRemoveDialogOpen(false)
+    setGeneratedSheets([])
+    setFrames([])
+    setCorrectionFrame(null)
+    setCorrectionPrompt('')
+    setCurrentFrameIndex(0)
+    setModalOpen(false)
+    setModalCandidateFrame(null)
+    setModalPreviewFrame(null)
+    lastSavedSheetsRef.current = null
+
+    const ok = await deleteLocalImages(LOCAL_IMAGE_KEYS.generated)
+    if (!ok) {
+      warnLocalSaveFailure('apagar o resultado salvo')
+      return
+    }
+    pushToast('Resultado gerado removido.', 'info')
+  }, [pushToast, warnLocalSaveFailure])
+
+  useEffect(() => {
+    if (!removeDialogOpen) return undefined
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setRemoveDialogOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [removeDialogOpen])
 
   /* ------------------------ Métrica de qualidade ------------------------ */
   // Avaliada no navegador sempre que os frames exibidos mudam (geração,
@@ -2124,6 +2154,7 @@ export default function MainDashboard() {
             onEditFrame={handleEditFrame}
             editingFrame={modalOpen ? modalFrameIndex : null}
             slicing={slicingResult}
+            onRemoveGenerated={() => setRemoveDialogOpen(true)}
           >
             <CorrectionPanel
               prompt={correctionPrompt}
@@ -2246,6 +2277,49 @@ export default function MainDashboard() {
         applyingSingle={modalApplyingSingle}
         applyingAll={modalApplyingAll}
       />
+
+      {removeDialogOpen && (
+        <div
+          className="fixed inset-0 z-[120] grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+          role="presentation"
+          onClick={() => setRemoveDialogOpen(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-generated-title"
+            onClick={(event) => event.stopPropagation()}
+            className="w-full max-w-sm rounded-xl border border-white/10 bg-[#0b111c] p-4 shadow-2xl shadow-black/60"
+          >
+            <h2
+              id="remove-generated-title"
+              className="text-[13px] font-semibold text-slate-100"
+            >
+              Remover a imagem gerada?
+            </h2>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-slate-400">
+              O resultado atual e a cópia salva neste dispositivo serão
+              apagados. Esta ação não pode ser desfeita.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setRemoveDialogOpen(false)}
+                className="rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:bg-white/5"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRemoveGenerated}
+                className="rounded-lg border border-rose-500/40 bg-rose-500/15 px-3 py-1.5 text-[11px] font-semibold text-rose-200 transition hover:bg-rose-500/25"
+              >
+                Remover
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

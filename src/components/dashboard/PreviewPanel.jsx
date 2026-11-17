@@ -9,6 +9,7 @@ import {
   Maximize2 as Maximize,
   RefreshCw,
   Square,
+  Trash2,
   X,
   ZoomIn,
   ZoomOut,
@@ -438,6 +439,7 @@ function FrameView({
  *   onEditFrame: (index: number) => void,
  *   editingFrame: number | null,
  *   slicing: boolean,
+ *   onRemoveGenerated?: () => void,
  *   children?: import('react').ReactNode,
  * }} props
  */
@@ -456,6 +458,7 @@ export default function PreviewPanel({
   onEditFrame,
   editingFrame,
   slicing,
+  onRemoveGenerated,
   children,
 }) {
   const refs = Array.isArray(referenceFrames) ? referenceFrames : []
@@ -498,6 +501,19 @@ export default function PreviewPanel({
               frames fica em <strong>Grade de Recorte</strong>, na coluna direita.
             </p>
           </>
+        }
+        badge={
+          hasFrames && onRemoveGenerated ? (
+            <button
+              type="button"
+              onClick={onRemoveGenerated}
+              title="Remover a imagem gerada"
+              className="inline-flex items-center gap-1 rounded-md border border-white/10 px-1.5 py-1 text-[10px] font-semibold text-slate-400 transition hover:border-rose-400/30 hover:bg-rose-400/5 hover:text-rose-300"
+            >
+              <Trash2 className="size-3" />
+              Remover
+            </button>
+          ) : null
         }
       >
         {/* Barra de modo: frame a frame ou animação */}
