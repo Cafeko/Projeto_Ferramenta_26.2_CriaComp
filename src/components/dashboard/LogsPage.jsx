@@ -164,6 +164,8 @@ export default function LogsPage({ open, history, onClose, onClear }) {
     document.body.style.overflow = 'hidden'
     const onKeyDown = (event) => {
       if (event.key !== 'Escape') return
+      // Uma ajuda (?) aberta fecha só ela, não a página inteira.
+      if (document.querySelector('[role="dialog"][aria-label^="Ajuda"]')) return
       if (confirmClear) setConfirmClear(false)
       else onClose?.()
     }

@@ -1,15 +1,12 @@
 import { useEffect, useState } from 'react'
 import {
   Database,
-  Image as ImageIcon,
-  KeyRound,
-  Search,
   Settings as SettingsIcon,
-  Sparkles,
   Trash2,
-  Type,
   X,
 } from 'lucide-react'
+
+import { HelpTip } from './ui'
 
 function Switch({ checked, onChange, title, description }) {
   return (
@@ -52,10 +49,10 @@ function Switch({ checked, onChange, title, description }) {
 }
 
 const SAVED_ITEMS = [
-  { icon: ImageIcon, label: 'Imagens de referência (movimento, aparência e estilo)' },
-  { icon: Type, label: 'Textos de aparência e estilo' },
-  { icon: KeyRound, label: 'Chaves de API (quando “Salvar chave” está marcado)' },
-  { icon: Sparkles, label: 'Imagem gerada' },
+  'Imagens de referência (movimento, aparência e estilo)',
+  'Textos de aparência e estilo',
+  'Chaves de API (quando “Salvar chave” está marcado)',
+  'Imagem gerada',
 ]
 
 /**
@@ -90,6 +87,8 @@ export default function SettingsModal({
     document.body.style.overflow = 'hidden'
     const onKeyDown = (event) => {
       if (event.key !== 'Escape') return
+      // Uma ajuda (?) aberta fecha só ela, não o menu inteiro.
+      if (document.querySelector('[role="dialog"][aria-label^="Ajuda"]')) return
       if (confirming) setConfirming(false)
       else onClose?.()
     }
@@ -144,10 +143,33 @@ export default function SettingsModal({
 
         <div className="max-h-[70vh] space-y-5 overflow-y-auto px-4 py-4">
           <section>
-            <h3 className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
-              <Database className="size-3" />
-              Sessão neste dispositivo
-            </h3>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h3 className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
+                <Database className="size-3" />
+                Sessão neste dispositivo
+              </h3>
+              <HelpTip
+                label="Ajuda: o que é salvo"
+                content={
+                  <>
+                    <p>Fica salvo neste navegador:</p>
+                    <ul className="list-disc space-y-0.5 pl-4">
+                      {SAVED_ITEMS.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                    <p>
+                      Ao remover qualquer item manualmente (imagem, texto ou
+                      chave), ele deixa de ser restaurado.
+                    </p>
+                    <p>
+                      Os logs de requisições são separados e só são apagados na
+                      página de logs.
+                    </p>
+                  </>
+                }
+              />
+            </div>
 
             <Switch
               checked={settings.saveSession}
@@ -159,27 +181,6 @@ export default function SettingsModal({
                   : 'Nada novo será salvo nem restaurado ao reabrir. O que já está salvo continua até limpar abaixo.'
               }
             />
-
-            <div className="mt-2 rounded-lg border border-white/5 bg-black/20 p-2.5">
-              <p className="text-[10px] text-slate-500">O que é salvo:</p>
-              <ul className="mt-1.5 space-y-1">
-                {SAVED_ITEMS.map(({ icon: Icon, label }) => (
-                  <li
-                    key={label}
-                    className="flex items-center gap-1.5 text-[10px] text-slate-400"
-                  >
-                    <Icon className="size-3 shrink-0 text-slate-500" />
-                    {label}
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 flex items-start gap-1.5 text-[10px] leading-relaxed text-slate-500">
-                <Search className="mt-0.5 size-3 shrink-0" />
-                Ao remover qualquer item manualmente (imagem, texto ou chave),
-                ele deixa de ser restaurado. Os logs de requisições são
-                separados e só são apagados na página de logs.
-              </p>
-            </div>
 
             {confirming ? (
               <div className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/10 p-2.5">
