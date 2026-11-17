@@ -2694,7 +2694,7 @@ export default function MainDashboard({
           <>
         {settings.mode === 'editor' ? (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-3 py-2">
               <p className="flex items-center gap-1.5 text-[11px] font-semibold text-cyan-200">
                 <PencilLine className="size-3.5" />
                 Modo editor
@@ -2702,13 +2702,6 @@ export default function MainDashboard({
                   · edite uma imagem e divida/corrija os frames
                 </span>
               </p>
-              <button
-                type="button"
-                onClick={() => handleSettingsChange({ mode: 'advanced' })}
-                className="rounded-lg border border-white/10 px-2.5 py-1 text-[10px] font-semibold text-slate-300 transition hover:bg-white/5"
-              >
-                Voltar ao modo avançado
-              </button>
             </div>
 
             <EditorMode

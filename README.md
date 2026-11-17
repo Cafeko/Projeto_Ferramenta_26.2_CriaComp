@@ -506,8 +506,7 @@ pipeline do modo avançado, abaixo:
 - O modo editor usa a mesma configuração de API e grava os logs como tipo
   **Edição**. A imagem carregada e o resultado entram na sessão salva.
 
-Para voltar, use o atalho **Voltar ao modo avançado** no topo do editor ou troque
-em Configurações.
+Para trocar de modo, use a página **Início** ou as **Configurações**.
 
 ### Logs e métricas
 

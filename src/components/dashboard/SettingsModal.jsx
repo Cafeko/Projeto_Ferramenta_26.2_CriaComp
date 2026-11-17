@@ -235,6 +235,11 @@ export default function SettingsModal({
             <div className="grid gap-2 sm:grid-cols-3">
               {[
                 {
+                  id: 'simple',
+                  label: 'Modo simples',
+                  hint: 'Um passo de cada vez.',
+                },
+                {
                   id: 'advanced',
                   label: 'Modo avançado',
                   hint: 'Todos os painéis.',
@@ -243,11 +248,6 @@ export default function SettingsModal({
                   id: 'editor',
                   label: 'Modo editor',
                   hint: 'Edita uma imagem enviada.',
-                },
-                {
-                  id: 'simple',
-                  label: 'Modo simples',
-                  hint: 'Um passo de cada vez.',
                 },
               ].map((option) => {
                 const active = settings.mode === option.id
