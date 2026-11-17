@@ -1,4 +1,4 @@
-import { ArrowRight, Clock, Gauge, ImageIcon } from 'lucide-react'
+import { ArrowRight, Gauge, ImageIcon } from 'lucide-react'
 
 import { PROVIDERS, formatDuration, formatUsd } from '../../lib/api'
 import { qualityGrade } from '../../utils/qualityMetrics'
@@ -183,7 +183,9 @@ export default function UsageSummary({ history, onOpenLogs }) {
                 label="Tempo total"
                 value={totals.timed > 0 ? formatDuration(totals.elapsedMs) : '—'}
                 hint={
-                  totals.timed > 0 ? `${totals.timed} medidas` : 'sem medição'
+                  totals.timed > 0
+                    ? `${totals.timed} medida${totals.timed === 1 ? '' : 's'}`
+                    : 'sem medição'
                 }
               />
               <CompactMetric
@@ -288,16 +290,11 @@ export default function UsageSummary({ history, onOpenLogs }) {
                       {label} {typeof value === 'number' ? `${value}` : '—'}
                     </span>
                   ))}
-                  <span className="flex items-center gap-1 font-mono text-[9px] text-slate-600">
-                    <Clock className="size-2.5" />
-                    {formatDuration(last.usage?.clientElapsedMs)}
-                  </span>
                 </div>
 
-                {last.status === 'error' && (
-                  <p className="mt-1.5 text-[10px] text-rose-300">
-                    {last.errorCode || 'request_failed'}
-                    {last.errorMessage ? ` — ${last.errorMessage}` : ''}
+                {typeof last.quality?.score !== 'number' && (
+                  <p className="mt-1.5 text-[10px] text-slate-600">
+                    Qualidade ainda não avaliada para esta imagem.
                   </p>
                 )}
               </>
