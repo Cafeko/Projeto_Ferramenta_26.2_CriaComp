@@ -261,7 +261,7 @@ function FrameView({
       className={`group bg-checkerboard relative overflow-hidden border ${
         fullscreen
           ? 'min-h-0 flex-1 rounded-xl border-white/10'
-          : 'h-72 rounded-lg border-white/15 sm:h-80'
+          : 'min-h-72 flex-1 rounded-lg border-white/15 sm:min-h-80'
       } ${hasFrame ? 'cursor-grab touch-none select-none' : ''} ${
         dragging ? 'cursor-grabbing' : ''
       }`}
@@ -304,7 +304,7 @@ function FrameView({
   )
 
   return (
-    <div className="min-w-0">
+    <div className="flex h-full min-w-0 flex-col">
       <div className="mb-1.5 flex items-center justify-between gap-2 px-0.5">
         <span
           className={`flex items-center gap-1.5 text-[11px] font-semibold tracking-wide uppercase ${
@@ -477,12 +477,13 @@ export default function PreviewPanel({
   const displayFrames = gens
 
   return (
-    <div className="space-y-4">
+    <div className="flex h-full flex-col gap-4">
       <Card
         title="Visualização dos frames"
         subtitle="Original e novo frame lado a lado"
         icon={LayoutGrid}
-        bodyClassName="p-3.5"
+        className="flex flex-1 flex-col"
+        bodyClassName="flex flex-1 flex-col p-3.5"
         help={
           <>
             <p>
@@ -619,7 +620,7 @@ export default function PreviewPanel({
         </div>
 
         {/* Player de frames lado a lado */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
           <FrameView
             label="Original"
             accent="slate"

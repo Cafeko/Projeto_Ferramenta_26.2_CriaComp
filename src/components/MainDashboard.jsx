@@ -2170,7 +2170,7 @@ export default function MainDashboard({
         {/* Faixa 2 — visualização dos frames e grade/exportação */}
         <section
           aria-label="Visualização e grade"
-          className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]"
+          className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]"
         >
           <PreviewPanel
             referenceFrames={referenceFrames}
@@ -2217,7 +2217,7 @@ export default function MainDashboard({
         {/* Faixa 3 — frames individuais e correção em lote */}
         <section
           aria-label="Frames e correção"
-          className="grid gap-4 lg:grid-cols-2"
+          className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]"
         >
           <AnimationFramesPanel
             frames={frames}
