@@ -338,7 +338,9 @@ interface é organizada em **quatro faixas horizontais** (empilham no celular):
   `Validar`), lista dinâmica de modelos e link `Obter chave` para o console de
   cada provedor.
 - **Referências e Personagem** (à direita, ocupando o restante da faixa): bloco
-  único com três seções separadas, lado a lado em telas largas.
+  único com três seções separadas, lado a lado em telas largas, com a mesma
+  altura do card da API. Os campos de descrição e a área de referência crescem
+  para preencher a faixa, e o botão de gerar fica alinhado ao rodapé dela.
   - **Referência de movimento:** drag & drop de PNG/spritesheet. O app detecta
     uma grade provável para pré-preencher a grade de recorte e a de geração. A
     grade de recorte (painel seguinte) só exibe/fatia; a grade de geração fica em
