@@ -1,12 +1,11 @@
-import { useEffect } from 'react'
 import {
   ArrowLeft,
   ArrowRight,
   Check,
   Eye,
-  Gauge,
   ImagePlus,
   KeyRound,
+  Sparkles,
 } from 'lucide-react'
 
 import ApiConfigPanel from './ApiConfigPanel'
@@ -19,9 +18,9 @@ import UsageSummary from './UsageSummary'
 /**
  * Modo básico: conduz o usuário por um bloco de cada vez, de cima para baixo.
  *
- * Passos: API → Referências e Personagem → Visualização/grade/exportação →
- * métricas (se ativadas). Cada passo tem uma frase curta de instrução e um
- * botão de continuar que só libera quando o passo está pronto.
+ * Passos: API → Referências e Personagem → Resultado (visualização, grade,
+ * exportação e métricas). No fim, o usuário pode continuar no modo avançado
+ * levando o que fez.
  *
  * @param {{
  *   step: number,
@@ -33,6 +32,7 @@ import UsageSummary from './UsageSummary'
  *   grid: Record<string, any>,
  *   exportPanel: Record<string, any>,
  *   metrics: Record<string, any>,
+ *   onContinueAdvanced: () => void,
  * }} props
  */
 export default function SimpleMode({
@@ -45,34 +45,27 @@ export default function SimpleMode({
   grid,
   exportPanel,
   metrics,
+  onContinueAdvanced,
 }) {
   const steps = [
     { id: 1, label: 'API', icon: KeyRound },
     { id: 2, label: 'Entradas', icon: ImagePlus },
     { id: 3, label: 'Resultado', icon: Eye },
-    ...(showMetrics ? [{ id: 4, label: 'Métricas', icon: Gauge }] : []),
   ]
   const totalSteps = steps.length
-
-  // Se as métricas forem desativadas, não deixa o passo atual fora da trilha.
-  useEffect(() => {
-    if (step > totalSteps) onStepChange(totalSteps)
-  }, [step, totalSteps, onStepChange])
 
   const apiReady = api.status === 'valid' && Boolean(api.modelId)
   const resultReady = Array.isArray(preview.frames) && preview.frames.length > 0
 
-  let maxUnlocked = 1
-  if (apiReady) maxUnlocked = 2
-  if (apiReady && resultReady) maxUnlocked = 3
-  if (showMetrics && maxUnlocked >= 3) maxUnlocked = 4
-
+  // Passo 2 fica sempre acessível (é só preencher); o resultado só quando
+  // existir algo gerado/restaurado.
+  const maxUnlocked = resultReady ? 3 : 2
   const canGoTo = (id) => id <= Math.max(step, maxUnlocked)
 
   const next = () => onStepChange(Math.min(totalSteps, step + 1))
   const back = () => onStepChange(Math.max(1, step - 1))
 
-  const nav = (ready, hint, nextLabel = 'Continuar', isLast = false) => (
+  const continueButton = (ready, hint) => (
     <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
       <button
         type="button"
@@ -84,22 +77,20 @@ export default function SimpleMode({
         Voltar
       </button>
 
-      {!isLast && (
-        <div className="flex items-center gap-3">
-          {!ready && hint && (
-            <span className="text-[10px] text-slate-500">{hint}</span>
-          )}
-          <button
-            type="button"
-            onClick={next}
-            disabled={!ready}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-500 to-blue-600 px-3 py-1.5 text-[11px] font-bold tracking-wide text-white uppercase shadow-lg shadow-blue-950/40 transition hover:from-sky-400 hover:to-blue-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
-          >
-            {nextLabel}
-            <ArrowRight className="size-3" />
-          </button>
-        </div>
-      )}
+      <div className="flex items-center gap-3">
+        {!ready && hint && (
+          <span className="text-[10px] text-slate-500">{hint}</span>
+        )}
+        <button
+          type="button"
+          onClick={next}
+          disabled={!ready}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-500 to-blue-600 px-3 py-1.5 text-[11px] font-bold tracking-wide text-white uppercase shadow-lg shadow-blue-950/40 transition hover:from-sky-400 hover:to-blue-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+        >
+          Continuar
+          <ArrowRight className="size-3" />
+        </button>
+      </div>
     </div>
   )
 
@@ -149,7 +140,7 @@ export default function SimpleMode({
           <div className="mx-auto max-w-md">
             <ApiConfigPanel {...api} />
           </div>
-          {nav(
+          {continueButton(
             apiReady,
             'Valide a chave e escolha um modelo para continuar.',
           )}
@@ -163,7 +154,7 @@ export default function SimpleMode({
             Envie a referência, descreva o personagem e gere os frames.
           </p>
           <ReferencePanel {...reference} />
-          {nav(resultReady, 'Gere os frames para continuar.')}
+          {continueButton(resultReady, 'Gere os frames para continuar.')}
         </section>
       )}
 
@@ -171,8 +162,10 @@ export default function SimpleMode({
         <section>
           <p className="mb-2 text-[12px] text-slate-400">
             <strong className="text-slate-200">Confira o resultado.</strong>{' '}
-            Veja os frames, ajuste o recorte e exporte.
+            Veja os frames, ajuste o recorte, exporte
+            {showMetrics ? ' e confira as métricas.' : '.'}
           </p>
+
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
             <PreviewPanel {...preview} />
             <div className="grid gap-4 md:grid-cols-2 xl:block xl:space-y-4">
@@ -180,20 +173,38 @@ export default function SimpleMode({
               <ExportPanel {...exportPanel} />
             </div>
           </div>
-          {showMetrics
-            ? nav(resultReady, 'Gere os frames para continuar.', 'Ver métricas')
-            : nav(false, '', 'Continuar', true)}
-        </section>
-      )}
 
-      {step === 4 && showMetrics && (
-        <section>
-          <p className="mb-2 text-[12px] text-slate-400">
-            <strong className="text-slate-200">Métricas.</strong> Custo, tempo e
-            qualidade desta sessão.
-          </p>
-          <UsageSummary {...metrics} />
-          {nav(false, '', 'Concluir', true)}
+          {showMetrics && (
+            <div className="mt-4">
+              <UsageSummary {...metrics} />
+            </div>
+          )}
+
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-white/5 pt-3">
+            <button
+              type="button"
+              onClick={back}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-3 py-1.5 text-[11px] font-semibold text-slate-400 transition hover:bg-white/5 hover:text-slate-200"
+            >
+              <ArrowLeft className="size-3" />
+              Voltar
+            </button>
+
+            <div className="flex flex-col items-end gap-1">
+              <button
+                type="button"
+                onClick={onContinueAdvanced}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-400/10 px-3 py-1.5 text-[11px] font-semibold text-cyan-200 transition hover:bg-cyan-400/20"
+              >
+                <Sparkles className="size-3.5" />
+                Continuar para o modo avançado
+                <ArrowRight className="size-3" />
+              </button>
+              <span className="text-[10px] text-slate-500">
+                Leva textos, referências e resultado para o avançado.
+              </span>
+            </div>
+          </div>
         </section>
       )}
     </div>

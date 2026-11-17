@@ -440,28 +440,31 @@ navegador em `spritetransfer:settings`):
 - **Limpar dados salvos:** apaga somente esses dados da sessão (imagens, textos,
   chaves e resultado). Pede confirmação e **não** toca nos logs de requisições,
   que só são apagados na página de logs.
-- **Modo avançado / editor / simples:** o **editor** troca a interface pelo
-  modo de edição e o **simples** pelo modo guiado (ver abaixo); o avançado
-  mostra todos os painéis de uma vez.
+- **Modo avançado / editor / simples:** o **simples** é o padrão (fluxo guiado,
+  ver abaixo), o **editor** edita uma imagem enviada e o **avançado** mostra
+  todos os painéis de uma vez.
 - **Mostrar métricas no final:** liga/desliga o painel de métricas do rodapé.
 
 ### Modo básico
 
-O **Modo simples** conduz o usuário por **um bloco de cada vez**, de cima para
-baixo, com uma frase curta de instrução em cada passo e um botão de continuar
-que só libera quando o passo está pronto:
+O **Modo simples** é a tela inicial do app e conduz o usuário por **um bloco de
+cada vez**, de cima para baixo, com uma frase curta de instrução em cada passo e
+um botão de continuar que só libera quando o passo está pronto:
 
 1. **Configure a API** — provedor, chave (validar) e modelo.
 2. **Informe as entradas** — referência de movimento, aparência/estilo e
-   `[ GERAR NOVO SPRITESHEET ]`.
-3. **Confira o resultado** — visualização dos frames, grade de recorte e
-   exportação.
-4. **Métricas** — quando **Mostrar métricas no final** está ligado; senão a
-   trilha termina no passo 3.
+   [ GERAR NOVO SPRITESHEET ].
+3. **Confira o resultado** — visualização dos frames, grade de recorte,
+   exportação e, **na mesma tela logo abaixo**, as métricas (quando **Mostrar
+   métricas no final** está ligado).
 
-A trilha no topo mostra o progresso (`1. API › 2. Entradas › 3. Resultado ›
-4. Métricas`) e permite voltar a um passo já liberado. Cada modo continua com
-seus próprios dados salvos.
+A trilha no topo (1. API › 2. Entradas › 3. Resultado) mostra o progresso e
+permite voltar a um passo já liberado.
+
+No fim do passo 3, **Continuar para o modo avançado** leva textos, referências,
+resultado, grade e métricas para o avançado — só quando você escolhe esse
+botão. Trocar o modo pelas Configurações **não** transfere nada: cada modo
+continua com seus próprios dados salvos.
 
 ### Modo editor
 

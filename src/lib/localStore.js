@@ -18,7 +18,9 @@ const APP_SETTINGS_VERSION = 1
 /** Preferências da interface (não fazem parte dos dados da sessão). */
 export const DEFAULT_APP_SETTINGS = {
   saveSession: true,
-  mode: 'advanced',
+  // O modo básico é a porta de entrada; o usuário pode continuar para o
+  // avançado no fim do fluxo.
+  mode: 'simple',
   showMetrics: true,
 }
 

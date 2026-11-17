@@ -2453,6 +2453,124 @@ export default function MainDashboard({
     }
   }, [exporting, fps, frames, pushToast])
 
+  /**
+   * Continua no modo avançado levando o que foi feito no básico (textos,
+   * referências, resultado, grade e métricas). Só acontece por escolha
+   * explícita; trocar o modo pelas Configurações não transfere nada.
+   */
+  const handleContinueAdvanced = useCallback(async () => {
+    const bucket = {
+      columns,
+      rows,
+      autoSlice,
+      fps,
+      viewMode,
+      exportColumns,
+      appearance,
+      artStyle,
+      generationColumns: Number.parseInt(generationColumns, 10) || null,
+      generationRows: Number.parseInt(generationRows, 10) || null,
+      correctionPrompt,
+      lastGeneration,
+    }
+    const modes = {
+      ...modeBucketsRef.current,
+      simple: bucket,
+      advanced: bucket,
+    }
+    modeBucketsRef.current = modes
+    if (saveSession) saveWorkspaceSettings({ modes })
+
+    const snapshot = captureModeImages()
+    modeImagesRef.current.simple = snapshot
+    modeImagesRef.current.advanced = snapshot
+
+    if (saveSession) {
+      const poseEntry = reference?.dataUrl
+        ? {
+            dataUrl: reference.dataUrl,
+            meta: {
+              width: reference.width,
+              height: reference.height,
+              name: reference.name,
+              size: reference.size,
+              kind: reference.kind || 'file',
+            },
+          }
+        : null
+      const styleEntry = styleReference?.dataUrl
+        ? {
+            dataUrl: styleReference.dataUrl,
+            meta: {
+              width: styleReference.width,
+              height: styleReference.height,
+              name: styleReference.name,
+            },
+          }
+        : null
+      const appearanceEntry = appearanceReference?.dataUrl
+        ? {
+            dataUrl: appearanceReference.dataUrl,
+            meta: {
+              width: appearanceReference.width,
+              height: appearanceReference.height,
+              name: appearanceReference.name,
+            },
+          }
+        : null
+
+      const results = await Promise.all([
+        putLocalImages(
+          imageKey('advanced', 'pose'),
+          poseEntry ? [poseEntry] : [],
+        ),
+        putLocalImages(
+          imageKey('advanced', 'style'),
+          styleEntry ? [styleEntry] : [],
+        ),
+        putLocalImages(
+          imageKey('advanced', 'appearance'),
+          appearanceEntry ? [appearanceEntry] : [],
+        ),
+        putLocalImages(
+          imageKey('advanced', 'generated'),
+          generatedSheets.map((dataUrl) => ({ dataUrl })),
+        ),
+      ])
+      if (results.some((ok) => !ok)) {
+        warnLocalSaveFailure('transferir os dados para o modo avançado')
+      }
+    }
+
+    handleSettingsChange({ mode: 'advanced' })
+    pushToast(
+      'Conteúdo do modo básico transferido para o avançado.',
+      'success',
+    )
+  }, [
+    appearance,
+    appearanceReference,
+    artStyle,
+    autoSlice,
+    captureModeImages,
+    columns,
+    correctionPrompt,
+    exportColumns,
+    fps,
+    generatedSheets,
+    generationColumns,
+    generationRows,
+    handleSettingsChange,
+    lastGeneration,
+    pushToast,
+    reference,
+    rows,
+    saveSession,
+    styleReference,
+    viewMode,
+    warnLocalSaveFailure,
+  ])
+
   /* -------------------------- Modo simples ------------------------------ */
   const simpleProps = {
     step: simpleStep,
@@ -2549,6 +2667,7 @@ export default function MainDashboard({
       onEditFrame: frames.length > 1 ? handleEditFrame : null,
       onOpenLogs: onOpenLogs ?? (() => {}),
     },
+    onContinueAdvanced: handleContinueAdvanced,
   }
 
   /* ----------------------------- Layout --------------------------------- */
