@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 
 import ApiConfigPanel from './dashboard/ApiConfigPanel'
+import AnimationFramesPanel from './dashboard/AnimationFramesPanel'
 import CorrectionPanel from './dashboard/CorrectionPanel'
 import ExportPanel from './dashboard/ExportPanel'
 import FrameEditModal from './FrameEditModal'
@@ -2129,125 +2130,149 @@ export default function MainDashboard({
   /* ----------------------------- Layout --------------------------------- */
   return (
     <>
-      <main className="relative mx-auto grid w-full max-w-[1600px] gap-4 px-4 pt-5 pb-12 lg:grid-cols-2 xl:grid-cols-[340px_minmax(0,1fr)_320px]">
-        <section className="space-y-4">
-          <ApiConfigPanel
-            provider={provider}
-            onProviderChange={handleProviderChange}
-            apiKey={apiKey}
-            onApiKeyChange={handleApiKeyChange}
-            onValidate={handleValidateKey}
-            status={keyStatus}
-            error={keyError}
-            models={models}
-            modelId={modelId}
-            onModelChange={handleModelChange}
-            modelsWarning={modelsWarning}
-            rememberKey={rememberKey}
-            onRememberKeyChange={handleRememberKeyChange}
-            onClearKey={handleClearSavedKey}
-          />
+      <main className="relative mx-auto w-full max-w-[1600px] space-y-4 px-4 pt-5 pb-12">
+        {/* Faixa 1 — API + inputs, visualização dos frames e grade/exportação */}
+        <section
+          aria-label="Configuração, visualização e grade"
+          className="grid gap-4 lg:grid-cols-2 xl:grid-cols-[340px_minmax(0,1fr)_320px]"
+        >
+          <div className="space-y-4">
+            <ApiConfigPanel
+              provider={provider}
+              onProviderChange={handleProviderChange}
+              apiKey={apiKey}
+              onApiKeyChange={handleApiKeyChange}
+              onValidate={handleValidateKey}
+              status={keyStatus}
+              error={keyError}
+              models={models}
+              modelId={modelId}
+              onModelChange={handleModelChange}
+              modelsWarning={modelsWarning}
+              rememberKey={rememberKey}
+              onRememberKeyChange={handleRememberKeyChange}
+              onClearKey={handleClearSavedKey}
+            />
 
-          <ReferencePanel
-            reference={reference}
-            onFileSelected={handleFileSelected}
-            onClearReference={handleClearReference}
-            appearance={appearance}
-            onAppearanceChange={setAppearance}
-            appearanceReference={appearanceReference}
-            onAppearanceFileSelected={handleAppearanceFileSelected}
-            onClearAppearanceReference={handleClearAppearanceReference}
-            artStyle={artStyle}
-            onArtStyleChange={setArtStyle}
-            styleReference={styleReference}
-            onStyleFileSelected={handleStyleFileSelected}
-            onClearStyleReference={handleClearStyleReference}
-            onGenerate={handleGenerate}
-            generating={generating}
-            elapsed={elapsed}
-            canGenerate={canGenerate}
-            generateHint={generateHint}
-            referenceError={referenceError}
-            onMultipleFiles={() =>
-              pushToast(
-                'Envie apenas uma imagem por vez em cada campo. Usei a primeira.',
-                'info',
-              )
-            }
-            generationColumns={generationColumns}
-            generationRows={generationRows}
-            referenceGrid={effectiveGrid}
-            onGenerationColumnsChange={handleGenerationColumnsChange}
-            onGenerationRowsChange={handleGenerationRowsChange}
-          />
+            <ReferencePanel
+              reference={reference}
+              onFileSelected={handleFileSelected}
+              onClearReference={handleClearReference}
+              appearance={appearance}
+              onAppearanceChange={setAppearance}
+              appearanceReference={appearanceReference}
+              onAppearanceFileSelected={handleAppearanceFileSelected}
+              onClearAppearanceReference={handleClearAppearanceReference}
+              artStyle={artStyle}
+              onArtStyleChange={setArtStyle}
+              styleReference={styleReference}
+              onStyleFileSelected={handleStyleFileSelected}
+              onClearStyleReference={handleClearStyleReference}
+              onGenerate={handleGenerate}
+              generating={generating}
+              elapsed={elapsed}
+              canGenerate={canGenerate}
+              generateHint={generateHint}
+              referenceError={referenceError}
+              onMultipleFiles={() =>
+                pushToast(
+                  'Envie apenas uma imagem por vez em cada campo. Usei a primeira.',
+                  'info',
+                )
+              }
+              generationColumns={generationColumns}
+              generationRows={generationRows}
+              referenceGrid={effectiveGrid}
+              onGenerationColumnsChange={handleGenerationColumnsChange}
+              onGenerationRowsChange={handleGenerationRowsChange}
+            />
+          </div>
+
+          <div className="min-w-0 space-y-4">
+            <PreviewPanel
+              referenceFrames={referenceFrames}
+              frames={frames}
+              fps={fps}
+              onFpsChange={setFps}
+              viewMode={viewMode}
+              onViewModeChange={setViewMode}
+              currentFrameIndex={currentFrameIndex}
+              onCurrentFrameIndexChange={setCurrentFrameIndex}
+              generating={generating}
+              referenceBusy={referenceBusy}
+              generationError={generationError}
+              slicing={slicingResult}
+              onRemoveGenerated={() => setRemoveDialogOpen(true)}
+            />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:col-span-2 xl:col-span-1 xl:block xl:space-y-4">
+            <GridPanel
+              referenceGrid={effectiveGrid}
+              generationColumns={generationColumns}
+              generationRows={generationRows}
+              columns={columns}
+              rows={rows}
+              autoSlice={autoSlice}
+              slicing={slicingResult}
+              frameCount={frames.length}
+              onColumnsChange={setColumns}
+              onRowsChange={setRows}
+              onAutoSliceChange={setAutoSlice}
+            />
+
+            <ExportPanel
+              frames={frames}
+              columns={exportColumns}
+              onColumnsChange={setExportColumns}
+              onExportGrid={handleExportGrid}
+              onExportGif={handleExportGif}
+              exporting={exporting}
+            />
+          </div>
         </section>
 
-        <section className="space-y-4">
-          <PreviewPanel
-            referenceFrames={referenceFrames}
+        {/* Faixa 2 — frames individuais e correção em lote */}
+        <section
+          aria-label="Frames e correção"
+          className="grid gap-4 lg:grid-cols-2"
+        >
+          <AnimationFramesPanel
             frames={frames}
-            fps={fps}
-            onFpsChange={setFps}
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
             currentFrameIndex={currentFrameIndex}
             onCurrentFrameIndexChange={setCurrentFrameIndex}
-            generating={generating}
-            referenceBusy={referenceBusy}
-            generationError={generationError}
             onEditFrame={handleEditFrame}
             editingFrame={modalOpen ? modalFrameIndex : null}
-            slicing={slicingResult}
-            onRemoveGenerated={() => setRemoveDialogOpen(true)}
-          >
-            <CorrectionPanel
-              prompt={correctionPrompt}
-              onPromptChange={setCorrectionPrompt}
-              onApply={handleApplyCorrection}
-              busy={correcting}
-              disabled={generating || modalOpen}
-              editingFrame={modalOpen ? modalFrameIndex : correctionFrame}
-              onClearEditing={() => {
-                setCorrectionFrame(null)
-                setModalOpen(false)
-              }}
-              frameCount={frames.length}
-              error={correctionError}
-              elapsed={elapsed}
-            />
-          </PreviewPanel>
+          />
+
+          <CorrectionPanel
+            prompt={correctionPrompt}
+            onPromptChange={setCorrectionPrompt}
+            onApply={handleApplyCorrection}
+            busy={correcting}
+            disabled={generating || modalOpen}
+            editingFrame={modalOpen ? modalFrameIndex : correctionFrame}
+            onClearEditing={() => {
+              setCorrectionFrame(null)
+              setModalOpen(false)
+            }}
+            frameCount={frames.length}
+            error={correctionError}
+            elapsed={elapsed}
+          />
         </section>
 
-        <aside className="grid gap-4 md:grid-cols-2 lg:col-span-2 xl:col-span-1 xl:block xl:space-y-4">
-          <GridPanel
-            referenceGrid={effectiveGrid}
-            generationColumns={generationColumns}
-            generationRows={generationRows}
-            columns={columns}
-            rows={rows}
-            autoSlice={autoSlice}
-            slicing={slicingResult}
-            frameCount={frames.length}
-            onColumnsChange={setColumns}
-            onRowsChange={setRows}
-            onAutoSliceChange={setAutoSlice}
-          />
-
-          <ExportPanel
-            frames={frames}
-            columns={exportColumns}
-            onColumnsChange={setExportColumns}
-            onExportGrid={handleExportGrid}
-            onExportGif={handleExportGif}
-            exporting={exporting}
-          />
-
+        {/* Faixa 3 — resumo de métricas, custos e tempo */}
+        <section
+          aria-label="Resumo de métricas"
+          className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]"
+        >
           <UsageSummary
             history={usageHistory}
             onOpenLogs={onOpenLogs ?? (() => {})}
           />
 
-          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 text-[10px] leading-relaxed text-slate-500 md:col-span-2 xl:col-span-1">
+          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 text-[10px] leading-relaxed text-slate-500">
             <div className="flex items-center justify-between gap-2">
               <p className="flex items-center gap-1.5 font-semibold tracking-wide text-slate-400 uppercase">
                 <Info className="size-3" />
@@ -2291,7 +2316,7 @@ export default function MainDashboard({
               pipeline 100% client-side · sem upload de frames
             </p>
           </div>
-        </aside>
+        </section>
       </main>
 
       <LogsPage
