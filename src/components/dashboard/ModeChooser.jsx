@@ -7,11 +7,11 @@ const MODES = [
     icon: Sparkles,
     badge: 'Recomendado',
     description:
-      'Um passo de cada vez: API, entradas e resultado. As métricas aparecem junto do resultado.',
+      'Para criar sua primeira animação sem se perder em opções: o app conduz você do começo ao fim.',
     points: [
-      'Um bloco por vez, de cima para baixo',
-      'Instruções curtas em cada passo',
-      'Pode continuar para o avançado no fim',
+      'Configure a chave do seu provedor',
+      'Envie a pose e descreva o personagem',
+      'Gere, confira e exporte os sprites',
     ],
   },
   {
@@ -19,11 +19,11 @@ const MODES = [
     title: 'Modo avançado',
     icon: LayoutGrid,
     description:
-      'Todos os painéis de uma vez: referências, geração, frames, correção, exportação e métricas.',
+      'Para quem quer controle fino: ajustar tudo, corrigir frames e acompanhar o custo de cada geração.',
     points: [
-      'Controle total de grade, FPS e exportação',
-      'Edição por frame ou em lote',
-      'Métricas e logs à mão',
+      'Ajuste referências, grade e FPS do seu jeito',
+      'Corrija frames individualmente ou em lote',
+      'Compare tempo, custo e qualidade de cada resultado',
     ],
   },
   {
@@ -31,11 +31,11 @@ const MODES = [
     title: 'Modo editor',
     icon: PencilLine,
     description:
-      'Carregue uma imagem pronta e edite como novo frame, com divisão em frames e exportação.',
+      'Para melhorar uma arte que você já tem: envie a imagem, peça as mudanças e receba o resultado pronto.',
     points: [
-      'Só a imagem para começar',
-      'Edição em lote ou por frame',
-      'Exporta PNG e GIF',
+      'Carregue a imagem que quer modificar',
+      'Peça ajustes em lote ou frame a frame',
+      'Salve o resultado em PNG ou GIF',
     ],
   },
 ]
