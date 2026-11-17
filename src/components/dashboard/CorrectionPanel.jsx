@@ -50,17 +50,25 @@ export default function CorrectionPanel({
       title={batch ? 'Correção em Lote' : `Editar Frame #${editingFrame + 1}`}
       subtitle="Preserva os frames e aplica só o ajuste pedido"
       icon={Wand2}
+      help={
+        <>
+          <p>
+            No modo em lote, a instrução é aplicada a todos os frames atuais, que
+            são enviados como contexto para a IA.
+          </p>
+          <p>
+            Descreva somente o que deve mudar. O estilo e a identidade do
+            personagem vêm das referências e dos frames atuais.
+          </p>
+          <p>
+            Para corrigir um frame isolado, use <strong>[ Editar Frame ]</strong>{' '}
+            no Animation Frames.
+          </p>
+        </>
+      }
     >
       <div className="space-y-3">
-        {batch ? (
-          <p className="text-[11px] leading-relaxed text-slate-500">
-            A instrução é aplicada a{' '}
-            <span className="font-semibold text-slate-300">
-              todos os {frameCount} frame{frameCount === 1 ? '' : 's'}
-            </span>{' '}
-            atuais, que são enviados como contexto para a IA.
-          </p>
-        ) : (
+        {!batch && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-amber-400/25 bg-amber-400/10 px-3 py-2">
             <p className="text-[11px] font-medium text-amber-200">
               Corrigindo somente o frame #{editingFrame + 1} de {frameCount}.
@@ -112,11 +120,6 @@ export default function CorrectionPanel({
         )}
 
         {error && <Alert tone="error">{error}</Alert>}
-
-        <p className="text-[10px] leading-relaxed text-slate-500">
-          Dica: descreva somente o que deve mudar. O estilo e a identidade do
-          personagem vêm das referências e dos frames atuais.
-        </p>
       </div>
     </Card>
   )

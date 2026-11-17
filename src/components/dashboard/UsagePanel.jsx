@@ -215,6 +215,20 @@ export default function UsagePanel({ history, onReset, quality, qualityBusy, onE
       title="Uso e custo da IA"
       subtitle="Tokens, custo, tempo e qualidade por chamada"
       icon={Gauge}
+      help={
+        <>
+          <p>
+            Mostra tokens de entrada/saída, custo, tempo e qualidade de cada
+            chamada, além do acumulado da sessão.
+          </p>
+          <p>
+            O custo usa o valor real quando o provedor informa (OpenRouter) ou
+            uma estimativa com preços online (LiteLLM/OpenRouter/Replicate). A
+            fonte aparece abaixo do valor.
+          </p>
+          <p>O histórico fica salvo apenas neste navegador.</p>
+        </>
+      }
       badge={
         history.length > 0 && (
           <button
@@ -237,9 +251,8 @@ export default function UsagePanel({ history, onReset, quality, qualityBusy, onE
 
       {!last ? (
         !showQuality && (
-          <p className="text-[11px] leading-relaxed text-slate-500">
-            Gere ou corrija frames para ver os tokens usados, o custo, o tempo e
-            a qualidade de cada chamada. O total acumulado fica salvo neste navegador.
+          <p className="text-[11px] text-slate-500">
+            Nenhuma chamada registrada ainda.
           </p>
         )
       ) : (

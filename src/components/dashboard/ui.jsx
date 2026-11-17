@@ -1,4 +1,13 @@
-import { AlertTriangle, CheckCircle2, Info, Loader2, XCircle } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import {
+  AlertTriangle,
+  CheckCircle2,
+  HelpCircle,
+  Info,
+  Loader2,
+  X,
+  XCircle,
+} from 'lucide-react'
 
 /** Classes compartilhadas pelos campos de formulário. */
 export const inputClass =
@@ -12,6 +21,74 @@ export const labelClass =
   'mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold tracking-wider text-slate-400 uppercase'
 
 /**
+ * Botão de ajuda “?” com instruções do bloco.
+ *
+ * @param {{
+ *   content: import('react').ReactNode,
+ *   label?: string,
+ *   className?: string,
+ * }} props
+ */
+export function HelpTip({ content, label = 'Ajuda deste bloco', className = '' }) {
+  const [open, setOpen] = useState(false)
+  const wrapperRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return undefined
+    const onPointerDown = (event) => {
+      if (!wrapperRef.current?.contains(event.target)) setOpen(false)
+    }
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  return (
+    <span ref={wrapperRef} className={`relative inline-flex shrink-0 ${className}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-label={label}
+        aria-expanded={open}
+        title="Ajuda"
+        className="grid size-6 place-items-center rounded-full border border-white/10 text-slate-500 transition hover:border-cyan-400/40 hover:bg-cyan-400/5 hover:text-cyan-300"
+      >
+        <HelpCircle className="size-3.5" />
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-label={label}
+          className="absolute top-full right-0 z-50 mt-1.5 w-64 rounded-lg border border-white/15 bg-[#0b111c] p-3 text-left text-[11px] leading-relaxed text-slate-300 shadow-xl shadow-black/50"
+        >
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
+              Como usar
+            </span>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Fechar ajuda"
+              className="grid size-5 place-items-center rounded text-slate-500 transition hover:bg-white/5 hover:text-slate-200"
+            >
+              <X className="size-3" />
+            </button>
+          </div>
+          <div className="space-y-1.5">{content}</div>
+        </div>
+      )}
+    </span>
+  )
+}
+
+/**
  * Card com cabeçalho opcional.
  *
  * @param {{
@@ -19,6 +96,7 @@ export const labelClass =
  *   subtitle?: string,
  *   icon?: import('lucide-react').LucideIcon,
  *   badge?: import('react').ReactNode,
+ *   help?: import('react').ReactNode,
  *   children: import('react').ReactNode,
  *   className?: string,
  *   bodyClassName?: string,
@@ -29,6 +107,7 @@ export function Card({
   subtitle,
   icon: Icon,
   badge,
+  help,
   children,
   className = '',
   bodyClassName = 'p-4',
@@ -50,7 +129,10 @@ export function Card({
               )}
             </div>
           </div>
-          {badge}
+          <div className="flex shrink-0 items-center gap-2">
+            {badge}
+            {help && <HelpTip content={help} />}
+          </div>
         </header>
       )}
       <div className={bodyClassName}>{children}</div>
@@ -65,20 +147,26 @@ export function Card({
  *   label: string,
  *   icon?: import('lucide-react').LucideIcon,
  *   hint?: import('react').ReactNode,
+ *   help?: import('react').ReactNode,
  *   htmlFor?: string,
  *   children: import('react').ReactNode,
  *   className?: string,
  * }} props
  */
-export function Field({ label, icon: Icon, hint, htmlFor, children, className = '' }) {
+export function Field({ label, icon: Icon, hint, help, htmlFor, children, className = '' }) {
   return (
     <div className={className}>
-      <label className={labelClass} htmlFor={htmlFor}>
-        {Icon && <Icon className="size-3.5" />}
-        {label}
-      </label>
-      {children}
-      {hint && <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">{hint}</p>}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <label className={labelClass} htmlFor={htmlFor}>
+            {Icon && <Icon className="size-3.5" />}
+            {label}
+          </label>
+          {children}
+          {hint && <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">{hint}</p>}
+        </div>
+        {help && <HelpTip content={help} label={`Ajuda: ${label}`} className="mt-0.5" />}
+      </div>
     </div>
   )
 }

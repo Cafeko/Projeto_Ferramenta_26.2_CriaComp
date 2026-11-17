@@ -12,7 +12,6 @@ import { Card, SecondaryButton, inputClass, labelClass } from './ui'
  *   onExportGrid: () => void,
  *   onExportGif: () => void,
  *   exporting: 'grid' | 'gif' | null,
- *   fps: number,
  * }} props
  */
 export default function ExportPanel({
@@ -22,7 +21,6 @@ export default function ExportPanel({
   onExportGrid,
   onExportGif,
   exporting,
-  fps,
 }) {
   const total = frames.length
   const parsedColumns = Math.max(1, Number.parseInt(columns, 10) || 1)
@@ -30,7 +28,24 @@ export default function ExportPanel({
   const rowCount = total > 0 ? Math.ceil(total / usedColumns) : 0
 
   return (
-    <Card title="Exportação" subtitle="Download direto do navegador" icon={Download}>
+    <Card
+      title="Exportação"
+      subtitle="Download direto do navegador"
+      icon={Download}
+      help={
+        <>
+          <p>
+            A spritesheet sai em PNG transparente na grade de colunas escolhida,
+            pronta para engines como Unity, Godot ou Aseprite.
+          </p>
+          <p>
+            O GIF animado usa o FPS atual do modo <strong>Animação</strong>, com
+            fundo transparente e loop infinito. Os dois são processados
+            localmente no navegador.
+          </p>
+        </>
+      }
+    >
       <div className="space-y-3">
         <div>
           <label className={labelClass} htmlFor="export-columns">
@@ -73,17 +88,6 @@ export default function ExportPanel({
         >
           <span className="font-mono text-[11px]">[ EXPORTAR GIF ANIMADO ]</span>
         </SecondaryButton>
-
-        <div className="rounded-lg border border-white/5 bg-black/20 px-3 py-2 text-[11px] leading-relaxed text-slate-500">
-          <p>
-            GIF gerado a <span className="font-mono text-slate-300">{fps} FPS</span>,
-            com fundo transparente e loop infinito.
-          </p>
-          <p className="mt-1">
-            A spritesheet sai em PNG transparente, pronta para engines como
-            Unity, Godot ou Aseprite.
-          </p>
-        </div>
       </div>
     </Card>
   )

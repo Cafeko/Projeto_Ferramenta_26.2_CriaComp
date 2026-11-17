@@ -44,9 +44,6 @@ export default function GridPanel({
     Math.min(64, Number.parseInt(generationRows, 10) || 1),
   )
   const requestedTotal = requestedColumns * requestedRows
-  const referenceTotal = referenceGrid
-    ? referenceGrid.total ?? referenceGrid.columns * referenceGrid.rows
-    : 0
 
   return (
     <Card
@@ -54,21 +51,31 @@ export default function GridPanel({
       subtitle="Recorta a referência e o resultado"
       icon={Grid3X3}
       bodyClassName="p-3"
+      help={
+        <>
+          <p>
+            Esta grade serve apenas para recortar a referência e o resultado em
+            Colunas × Linhas. Ela não altera quantos frames a IA desenha.
+          </p>
+          <p>
+            A quantidade desenhada vem de <strong>Frames a Gerar</strong>, na
+            coluna esquerda. Ative <strong>Auto-fatiar</strong> para aplicar a
+            grade à exibição; desligado, a folha é tratada como imagem única.
+          </p>
+        </>
+      }
     >
       <div className="space-y-3">
-        <div className="rounded-lg border border-cyan-400/15 bg-cyan-400/[0.04] px-2.5 py-2 text-[11px] leading-relaxed text-slate-400">
-          A IA gera{' '}
-          <strong className="text-cyan-300">
-            {requestedTotal} frame{requestedTotal === 1 ? '' : 's'}
+        <p className="text-[10px] text-slate-500">
+          IA:{' '}
+          <strong className="text-slate-300">
+            {requestedColumns}×{requestedRows} = {requestedTotal}
           </strong>{' '}
-          na grade{' '}
-          <strong className="text-cyan-300">
-            {requestedColumns}×{requestedRows}
-          </strong>{' '}
-          (definida em <strong className="text-slate-300">Frames a Gerar</strong>,
-          à esquerda). Esta grade abaixo serve apenas para recortar a referência
-          e o resultado.
-        </div>
+          · recorte:{' '}
+          <strong className="text-slate-300">
+            {referenceGrid.columns}×{referenceGrid.rows}
+          </strong>
+        </p>
 
         <label className="flex cursor-pointer items-center justify-between gap-2">
           <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
@@ -133,13 +140,6 @@ export default function GridPanel({
             </span>
           )}
         </div>
-
-        {referenceTotal > 0 && (
-          <p className="text-[10px] text-slate-500">
-            Grade atual: {referenceGrid.columns}×{referenceGrid.rows} ·{' '}
-            {referenceTotal} célula{referenceTotal === 1 ? '' : 's'}
-          </p>
-        )}
       </div>
     </Card>
   )

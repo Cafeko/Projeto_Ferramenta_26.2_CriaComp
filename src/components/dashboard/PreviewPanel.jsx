@@ -487,6 +487,18 @@ export default function PreviewPanel({
         subtitle="Original e novo frame lado a lado"
         icon={LayoutGrid}
         bodyClassName="p-3.5"
+        help={
+          <>
+            <p>
+              Use <strong>Frame a frame</strong> para navegar manualmente ou{' '}
+              <strong>Animação</strong> para reproduzir no FPS escolhido.
+            </p>
+            <p>
+              Cada quadro tem zoom, arraste e tela cheia. A grade que recorta os
+              frames fica em <strong>Grade de Recorte</strong>, na coluna direita.
+            </p>
+          </>
+        }
       >
         {/* Barra de modo: frame a frame ou animação */}
         <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-white/10 pb-3">
@@ -646,6 +658,19 @@ export default function PreviewPanel({
         icon={Film}
         badge={<Pill tone={hasFrames ? 'cyan' : 'neutral'}>{displayFrames.length} frames</Pill>}
         bodyClassName="p-3"
+        help={
+          <>
+            <p>
+              Clique em um frame para vê-lo lado a lado. O botão{' '}
+              <strong>[ Editar ]</strong> abre a correção individual daquele
+              frame.
+            </p>
+            <p>
+              A correção individual envia só o frame escolhido e pode ser mantida
+              como candidata antes de substituir o atual.
+            </p>
+          </>
+        }
       >
         {!displayFrames.length ? (
           <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-white/10 bg-black/20 px-4 py-10 text-center">
@@ -717,13 +742,6 @@ export default function PreviewPanel({
               )
             })}
           </div>
-        )}
-
-        {displayFrames.length && (
-          <p className="mt-2 flex items-center gap-1.5 text-[10px] text-slate-500">
-            <span className="size-3">✎</span>
-            Clique em qualquer frame para vê-lo lado a lado. Edite um frame para corrigi-lo individualmente.
-          </p>
         )}
       </Card>
 

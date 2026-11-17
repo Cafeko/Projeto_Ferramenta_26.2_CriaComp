@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 
 import { formatElapsed } from '../../lib/api'
-import { Alert, Card, Field, PrimaryButton, inputClass } from './ui'
+import { Alert, Card, Field, HelpTip, PrimaryButton, inputClass } from './ui'
 
 /**
  * Coluna esquerda: referência de movimento, prompts e botão de geração.
@@ -146,6 +146,20 @@ export default function ReferencePanel({
             </span>
           ) : null
         }
+        help={
+          <>
+            <p>
+              Envie a spritesheet com as poses que a IA deve seguir. Ela é usada
+              apenas como referência de layout/pose, não como identidade ou
+              estilo.
+            </p>
+            <p>
+              A detecção tenta preencher a grade de recorte e a grade de geração.
+              Se ela errar, ajuste a grade em <strong>Grade de Recorte</strong> e,
+              se necessário, os frames em <strong>Frames a Gerar</strong>.
+            </p>
+          </>
+        }
       >
         <div>
           <input
@@ -236,10 +250,32 @@ export default function ReferencePanel({
           {showManualFrames ? (
             <div className="mt-3 border-t border-white/10 pt-3">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
-                  <Grid3X3 className="size-3.5 text-cyan-400" />
-                  Frames a Gerar
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
+                    <Grid3X3 className="size-3.5 text-cyan-400" />
+                    Frames a Gerar
+                  </p>
+                  <HelpTip
+                    label="Ajuda: Frames a Gerar"
+                    content={
+                      <>
+                        <p>
+                          Define a grade que a IA deve desenhar: Colunas × Linhas
+                          = total de frames.
+                        </p>
+                        <p>
+                          É independente da <strong>Grade de Recorte</strong>.
+                          Use estes campos quando a detecção automática não
+                          dividir a folha corretamente (ex.: 4×2 = 8 frames).
+                        </p>
+                      </>
+                    }
+                  />
+                  <span className="font-mono text-[10px] text-slate-500">
+                    {parsedGenerationColumns}×{parsedGenerationRows} ={' '}
+                    {generationTotal}
+                  </span>
+                </div>
                 {!detectionUncertain && (
                   <button
                     type="button"
@@ -300,13 +336,6 @@ export default function ReferencePanel({
                   />
                 </div>
               </div>
-              <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-                A IA desenha {parsedGenerationColumns}×{parsedGenerationRows} ={' '}
-                <strong className="text-slate-300">
-                  {generationTotal} frame(s)
-                </strong>
-                . É independente da grade de recorte.
-              </p>
             </div>
           ) : reference ? (
             <div className="mt-3 flex items-center justify-between gap-2 border-t border-white/10 pt-3">
@@ -330,12 +359,46 @@ export default function ReferencePanel({
         </div>
       </Card>
 
-      <Card title="Descrição do Personagem" subtitle="Quem deve aparecer nos frames" icon={User}>
+      <Card
+        title="Descrição do Personagem"
+        subtitle="Quem deve aparecer nos frames"
+        icon={User}
+        help={
+          <>
+            <p>
+              <strong>Aparência</strong> define a identidade do personagem:
+              roupa, cores, cabelo, equipamento e proporções. Pode ser texto e/ou
+              uma imagem de referência.
+            </p>
+            <p>
+              <strong>Estilo</strong> define só a renderização: pixel density,
+              paleta, contorno, sombreamento e nível de detalhe. Pode ser texto
+              e/ou uma imagem de referência.
+            </p>
+            <p>
+              Se você não informar estilo, a própria referência de movimento
+              também vale como estilo.
+            </p>
+          </>
+        }
+      >
         <div className="space-y-3">
           <Field
             label="Aparência do Personagem"
             htmlFor="appearance-input"
-            hint="Detalhe cores, roupa, arma, proporções e detalhes marcantes."
+            help={
+              <>
+                <p>
+                  A imagem de referência de aparência define apenas a identidade
+                  do personagem: roupa, cores, cabelo, equipamento e proporções.
+                  Ela não afeta a pose nem o estilo de arte.
+                </p>
+                <p>
+                  No texto, detalhe cores, roupa, arma, proporções e detalhes
+                  marcantes. O que não couber na resolução será simplificado.
+                </p>
+              </>
+            }
           >
             <textarea
               id="appearance-input"
@@ -429,10 +492,6 @@ export default function ReferencePanel({
                   </div>
                 )}
               </div>
-              <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-                Usada apenas para a aparência (roupa, cores, cabelo). Não afeta a
-                pose nem o estilo de arte.
-              </p>
             </div>
           </Field>
 
@@ -440,7 +499,21 @@ export default function ReferencePanel({
             label="Estilo de Arte"
             icon={Palette}
             htmlFor="style-input"
-            hint="Paleta, contorno, iluminação e nível de detalhe."
+            help={
+              <>
+                <p>
+                  A imagem de referência de estilo define apenas a aparência
+                  visual: pixel density, paleta, contorno, sombreamento e nível
+                  de detalhe. Ela não define a pose nem a identidade do
+                  personagem.
+                </p>
+                <p>
+                  No texto, descreva paleta, contorno, iluminação e nível de
+                  detalhe. Se você não enviar texto nem imagem de estilo, a
+                  referência de movimento também será usada como estilo.
+                </p>
+              </>
+            }
           >
             <textarea
               id="style-input"
@@ -534,10 +607,6 @@ export default function ReferencePanel({
                   </div>
                 )}
               </div>
-              <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
-                Sem texto e sem imagem de estilo, a referência de movimento
-                também define o estilo.
-              </p>
             </div>
           </Field>
         </div>

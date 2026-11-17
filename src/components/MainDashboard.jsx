@@ -16,6 +16,7 @@ import GridPanel from './dashboard/GridPanel'
 import PreviewPanel from './dashboard/PreviewPanel'
 import ReferencePanel from './dashboard/ReferencePanel'
 import UsagePanel from './dashboard/UsagePanel'
+import { HelpTip } from './dashboard/ui'
 import {
   DEFAULT_PROVIDER,
   MAX_PREVIOUS_FRAMES,
@@ -2172,26 +2173,39 @@ export default function MainDashboard() {
             onExportGrid={handleExportGrid}
             onExportGif={handleExportGif}
             exporting={exporting}
-            fps={fps}
           />
 
           <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 text-[10px] leading-relaxed text-slate-500 md:col-span-2 xl:col-span-1">
-            <p className="flex items-center gap-1.5 font-semibold tracking-wide text-slate-400 uppercase">
-              <Info className="size-3" />
-              Privacidade
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex items-center gap-1.5 font-semibold tracking-wide text-slate-400 uppercase">
+                <Info className="size-3" />
+                Privacidade
+              </p>
+              <HelpTip
+                label="Ajuda: Privacidade"
+                content={
+                  <>
+                    <p>
+                      A chave, as configurações e as imagens (referências e
+                      último resultado) ficam apenas neste dispositivo — no{' '}
+                      <code>localStorage</code> e no <code>IndexedDB</code>. Não
+                      são gravadas no servidor nem aparecem em outro navegador.
+                    </p>
+                    <p>
+                      Desmarque “Salvar chave neste navegador” para manter a
+                      chave só na memória da aba. A última sessão é restaurada ao
+                      abrir; use o botão abaixo para apagar as imagens salvas.
+                    </p>
+                    <p>
+                      Recorte, alinhamento, spritesheet e GIF são processados
+                      localmente via Canvas API.
+                    </p>
+                  </>
+                }
+              />
+            </div>
             <p className="mt-1.5">
-              Sua chave, as configurações e as imagens (referências e último
-              resultado) ficam apenas neste dispositivo — no <code>localStorage</code>{' '}
-              e no <code>IndexedDB</code> do navegador. Elas não são gravadas no
-              servidor e não aparecem em outro dispositivo ou navegador. Para
-              manter a chave só na memória desta aba, desmarque “Salvar chave
-              neste navegador”. O recorte, o alinhamento, a spritesheet e o GIF
-              são processados localmente via Canvas API.
-            </p>
-            <p className="mt-1.5">
-              Ao abrir o site, a última sessão é restaurada automaticamente. Se
-              quiser que as imagens não voltem, apague-as deste dispositivo:
+              Tudo fica só neste dispositivo; nada é gravado no servidor.
             </p>
             <button
               type="button"

@@ -64,6 +64,19 @@ export default function ApiConfigPanel({
           : 'BYOK · a chave fica só na memória da aba'
       }
       icon={KeyRound}
+      help={
+        <>
+          <p>
+            Escolha o provedor, cole a chave e clique em <strong>Validar</strong>{' '}
+            para carregar os modelos de imagem.
+          </p>
+          <p>
+            A chave fica só no seu navegador; desmarque “Salvar chave neste
+            navegador” para mantê-la apenas na memória da aba.
+          </p>
+          <p>O modelo escolhido define qual IA gera as imagens.</p>
+        </>
+      }
       badge={
         status === 'valid' ? (
           <Pill tone="green">
