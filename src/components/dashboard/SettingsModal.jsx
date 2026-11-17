@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import {
+  BookOpen,
   Database,
   Settings as SettingsIcon,
   Trash2,
@@ -287,6 +288,27 @@ export default function SettingsModal({
             </div>
           </section>
         </div>
+
+          <section>
+            <h3 className="mb-2 text-[10px] font-semibold tracking-wider text-slate-400 uppercase">
+              API
+            </h3>
+            <div className="rounded-lg border border-white/5 bg-black/20 p-2.5">
+              <p className="text-[10px] leading-relaxed text-slate-500">
+                Documentação técnica do backend (endpoints, formatos e códigos de
+                erro).
+              </p>
+              <a
+                href="/api/docs"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:bg-cyan-400/5 hover:text-cyan-200"
+              >
+                <BookOpen className="size-3" />
+                Abrir documentação da API
+              </a>
+            </div>
+          </section>
 
         <footer className="flex justify-end border-t border-white/5 px-4 py-3">
           <button

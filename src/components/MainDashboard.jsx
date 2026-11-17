@@ -2885,23 +2885,24 @@ export default function MainDashboard({
               onOpenLogs={onOpenLogs ?? (() => {})}
             />
           )}
-
-          <p className="flex items-start gap-2 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5 text-[10px] leading-relaxed text-slate-500">
-            <ShieldCheck className="mt-0.5 size-3.5 shrink-0 text-emerald-400/80" />
-            <span>
-              <strong className="font-semibold text-slate-300">
-                Privacidade:
-              </strong>{' '}
-              nada é salvo nos servidores do app. Chave, configurações, textos e
-              imagens ficam somente neste navegador, no <code>localStorage</code>{' '}
-              e no <code>IndexedDB</code>, e podem ser removidos ao limpar os
-              dados do site. Recorte, spritesheet e GIF são processados
-              localmente.
-            </span>
-          </p>
         </section>
           </>
         )}
+
+        <div className="flex flex-col gap-2 rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5 text-[10px] leading-relaxed text-slate-500 sm:flex-row sm:items-start sm:gap-3">
+          <span className="inline-flex shrink-0 items-center gap-1.5 self-start rounded-full border border-emerald-400/20 bg-emerald-400/5 px-2.5 py-1 text-[10px] font-medium text-emerald-300">
+            <ShieldCheck className="size-3" />
+            BYOK · chave só na memória
+          </span>
+          <p>
+            <strong className="font-semibold text-slate-300">Privacidade:</strong>{' '}
+            nada é salvo nos servidores do app. Chave, configurações, textos e
+            imagens ficam somente neste navegador, no <code>localStorage</code> e
+            no <code>IndexedDB</code>, e podem ser removidos ao limpar os dados
+            do site. Recorte, spritesheet e GIF são processados localmente.
+          </p>
+        </div>
+
           </>
         )}
       </main>

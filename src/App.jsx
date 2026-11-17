@@ -1,12 +1,9 @@
 import { useState } from 'react'
 import {
-  BookOpen,
-  FlaskConical,
   Gamepad2,
   History,
   Home,
   Settings,
-  ShieldCheck,
 } from 'lucide-react'
 
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -48,11 +45,6 @@ export default function App() {
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
-              <span className="hidden items-center gap-1.5 rounded-full border border-emerald-400/20 bg-emerald-400/5 px-3 py-1 text-[11px] font-medium text-emerald-300 md:inline-flex">
-                <ShieldCheck className="size-3" />
-                BYOK · chave só na memória
-              </span>
-
               <button
                 type="button"
                 onClick={() => setHomeOpen(true)}
@@ -83,25 +75,6 @@ export default function App() {
                 <span className="hidden sm:inline">Configurações</span>
               </button>
 
-              <a
-                href="/laboratorio-api.html"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:text-cyan-200"
-                title="Laboratório de teste da API"
-              >
-                <FlaskConical className="size-3.5" />
-                <span className="hidden sm:inline">Laboratório</span>
-              </a>
-
-              <a
-                href="/api/docs"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:text-cyan-200"
-                title="Documentação da API"
-              >
-                <BookOpen className="size-3.5" />
-                <span className="hidden sm:inline">API</span>
-              </a>
             </div>
           </div>
         </header>

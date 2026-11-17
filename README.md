@@ -324,8 +324,9 @@ Além dos erros do backend, a interface avisa quando a ação não pode continua
 
 ### Página de teste (laboratório)
 
-A interface principal já consome a API. O `/laboratorio-api.html` continua
-disponível para depurar o backend isoladamente (também em produção, ex.:
+A interface principal já consome a API. O `/laboratorio-api.html` **não é
+exposto na interface** (é uma página de depuração para desenvolvedores, acessível
+só pela URL direta, ex.:
 `https://spritetransfer-web.vercel.app/laboratorio-api.html`). Ela permite:
 
 1. colar a chave e validar/listar os modelos do provedor;
@@ -444,6 +445,12 @@ navegador em `spritetransfer:settings`):
   **editor** edita uma imagem enviada e o **avançado** mostra todos os painéis de
   uma vez. A página inicial também permite escolher entre os três.
 - **Mostrar métricas no final:** liga/desliga o painel de métricas do rodapé.
+- **API:** link para a **documentação técnica** (`/api/docs`), que antes ficava
+  no cabeçalho.
+
+O cabeçalho mantém apenas **Início**, **Atividade** e **Configurações**. O aviso
+**BYOK · chave só na memória** e o texto de privacidade ficam no rodapé, abaixo
+do conteúdo de qualquer modo.
 
 ### Página inicial
 
