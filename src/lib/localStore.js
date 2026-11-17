@@ -15,6 +15,28 @@ const WORKSPACE_VERSION = 1
 const APP_SETTINGS_KEY = 'spritetransfer:settings'
 const APP_SETTINGS_VERSION = 1
 
+const PAGE_KEY = 'spritetransfer:page'
+
+/** Página em que o usuário estava: 'dashboard' (modo) ou 'home' (escolha). */
+export function loadLastPage() {
+  try {
+    return window.localStorage.getItem(PAGE_KEY) === 'dashboard'
+      ? 'dashboard'
+      : 'home'
+  } catch {
+    return 'home'
+  }
+}
+
+export function saveLastPage(page) {
+  try {
+    window.localStorage.setItem(PAGE_KEY, page === 'dashboard' ? 'dashboard' : 'home')
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Preferências da interface (não fazem parte dos dados da sessão). */
 export const DEFAULT_APP_SETTINGS = {
   saveSession: true,

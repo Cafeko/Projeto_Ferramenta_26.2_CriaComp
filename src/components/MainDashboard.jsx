@@ -312,6 +312,7 @@ export default function MainDashboard({
   onCloseSettings,
   homeOpen = false,
   onCloseHome,
+  onOpenHome,
 }) {
   /* ---------------------------- Configurações ---------------------------- */
   const [initialSettings] = useState(loadAppSettings)
@@ -996,10 +997,18 @@ export default function MainDashboard({
         'Dados salvos neste dispositivo foram apagados. Os logs foram mantidos.',
         'info',
       )
+      // Volta para a página inicial (escolha de modo).
+      onCloseSettings?.()
+      onOpenHome?.()
     } finally {
       setClearingSession(false)
     }
-  }, [pushToast, warnLocalSaveFailure])
+  }, [
+    onCloseSettings,
+    onOpenHome,
+    pushToast,
+    warnLocalSaveFailure,
+  ])
 
   /* ----------------------------- Modo editor ---------------------------- */
   // Carregar a imagem já a coloca na pipeline como spritesheet atual; a edição

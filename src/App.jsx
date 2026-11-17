@@ -8,12 +8,26 @@ import {
 
 import { ErrorBoundary } from './components/ErrorBoundary'
 import MainDashboard from './components/MainDashboard'
+import { loadLastPage, saveLastPage } from './lib/localStore'
 
 export default function App() {
   const [logsOpen, setLogsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  // A página inicial (escolha de modo) abre a cada entrada no app.
-  const [homeOpen, setHomeOpen] = useState(true)
+  // Reabre na última página usada (modo) ou na escolha de modo, se ainda não
+  // houver uma escolha salva.
+  const [homeOpen, setHomeOpen] = useState(
+    () => loadLastPage() !== 'dashboard',
+  )
+
+  const goHome = () => {
+    setHomeOpen(true)
+    saveLastPage('home')
+  }
+
+  const closeHome = () => {
+    setHomeOpen(false)
+    saveLastPage('dashboard')
+  }
 
   return (
     <div className="relative min-h-screen overflow-x-hidden">
@@ -47,7 +61,7 @@ export default function App() {
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => setHomeOpen(true)}
+                onClick={goHome}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-[11px] font-semibold text-slate-300 transition hover:border-cyan-400/30 hover:text-cyan-200"
                 title="Página inicial (escolher modo)"
               >
@@ -87,7 +101,8 @@ export default function App() {
             settingsOpen={settingsOpen}
             onCloseSettings={() => setSettingsOpen(false)}
             homeOpen={homeOpen}
-            onCloseHome={() => setHomeOpen(false)}
+            onCloseHome={closeHome}
+            onOpenHome={goHome}
           />
         </ErrorBoundary>
 

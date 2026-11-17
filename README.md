@@ -454,11 +454,15 @@ do conteúdo de qualquer modo.
 
 ### Página inicial
 
-Ao abrir o app, a primeira tela é a **escolha de modo**, com três cartões
+Na primeira visita, a tela é a **escolha de modo**, com três cartões
 (**Básico**, **Avançado** e **Editor**), uma descrição curta e o botão de
 entrada. O cartão do modo usado por último aparece como **“Continuar neste
-modo”**. O botão **Início** no cabeçalho volta a essa página a qualquer
-momento.
+modo”**.
+
+A **página em que você estava é lembrada** (spritetransfer:page): se estava
+em um modo, o app reabre direto nele; se estava na escolha de modo, reabre nela.
+O botão **Início** no cabeçalho volta à escolha a qualquer momento. **Limpar
+dados salvos** também volta para a página inicial.
 
 ### Modo básico
 
@@ -530,7 +534,8 @@ apenas no navegador em uso:
 - **`localStorage`** — chave de API por provedor e modelo preferido
   (`spritetransfer:api-config`), configurações e textos da sessão
   (`spritetransfer:workspace`), preferências da interface
-  (`spritetransfer:settings`) e histórico de logs
+  (`spritetransfer:settings`), última página/modo usado
+  (`spritetransfer:page`) e histórico de logs
   (`spritetransfer:usage-history`, últimas 100 requisições, sem imagens).
 - **IndexedDB** (`spritetransfer-local`) — imagens de referência de pose, estilo
   e aparência, o último spritesheet gerado, e a imagem/resultado do modo editor,
