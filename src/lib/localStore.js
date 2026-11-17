@@ -78,6 +78,11 @@ const DB_VERSION = 1
 const STORE_NAME = 'images'
 
 /** Chaves usadas para as imagens persistidas. */
+/** Chave de imagem por modo (avançado, editor, simples). */
+export function imageKey(mode, name) {
+  return `${mode}:${name}`
+}
+
 export const LOCAL_IMAGE_KEYS = {
   pose: 'pose',
   style: 'style',
@@ -112,6 +117,11 @@ export function loadWorkspaceSettings() {
     if (!parsed || parsed.version !== WORKSPACE_VERSION) return null
     const data = parsed.data
     if (!data || typeof data !== 'object') return null
+
+    // Formato por modo: { modes: { advanced: {...}, editor: {...}, simple: {...} } }
+    if (data.modes && typeof data.modes === 'object' && !Array.isArray(data.modes)) {
+      return { modes: data.modes }
+    }
 
     return {
       columns: typeof data.columns === 'string' ? data.columns : '1',

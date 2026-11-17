@@ -36,6 +36,7 @@ import { Alert, Card, PrimaryButton, SecondaryButton, inputClass } from './dashb
  *   onDiscardCandidate: () => void,
  *   applyingSingle: boolean,
  *   applyingAll: boolean,
+ *   showPose?: boolean,
  * }} props
  */
 export default function FrameEditModal({
@@ -54,6 +55,7 @@ export default function FrameEditModal({
   onDiscardCandidate,
   applyingSingle,
   applyingAll,
+  showPose = true,
 }) {
   if (!open) return null
 
@@ -95,13 +97,22 @@ export default function FrameEditModal({
 
         {/* ------------------------------------ Comparador Triplo ------------------------------------ */}
         <Card
-          title="Comparador Triplo"
-          subtitle="Pose original · Frame atual com defeito · Preview da correção"
+          title={showPose ? 'Comparador Triplo' : 'Comparador Duplo'}
+          subtitle={
+            showPose
+              ? 'Pose original · Frame atual com defeito · Preview da correção'
+              : 'Frame atual com defeito · Preview da correção'
+          }
           icon={Zap}
           bodyClassName="p-3"
         >
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {/* Coluna 1: Pose Original */}
+          <div
+            className={`grid grid-cols-1 gap-3 ${
+              showPose ? 'sm:grid-cols-3' : 'sm:grid-cols-2'
+            }`}
+          >
+            {/* Coluna 1: Pose Original (só no modo avançado) */}
+            {showPose && (
             <div className="space-y-2">
               <p className="text-[11px] font-semibold tracking-wide text-slate-400 uppercase flex items-center gap-1.5">
                 <Scan className="size-3.5 text-slate-500" />
@@ -125,6 +136,7 @@ export default function FrameEditModal({
                 </span>
               </div>
             </div>
+            )}
 
             {/* Coluna 2: Frame Atual (com defeito) */}
             <div className="space-y-2">

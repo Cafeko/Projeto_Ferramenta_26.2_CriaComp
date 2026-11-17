@@ -32,11 +32,11 @@ import {
   listModels,
 } from '../lib/api'
 import {
-  LOCAL_IMAGE_KEYS,
   clearLocalImages,
   clearWorkspaceSettings,
   deleteLocalImages,
   getLocalImages,
+  imageKey,
   loadAppSettings,
   loadWorkspaceSettings,
   putLocalImages,
@@ -322,6 +322,17 @@ export default function MainDashboard({
   const [initialWorkspace] = useState(() =>
     saveSession ? loadWorkspaceSettings() : null,
   )
+  // Cada modo (avançado/editor/simples) tem seus próprios dados salvos.
+  const initialBuckets =
+    initialWorkspace?.modes && typeof initialWorkspace.modes === 'object'
+      ? initialWorkspace.modes
+      : initialWorkspace
+        ? { advanced: initialWorkspace }
+        : {}
+  const initialBucket = initialBuckets[initialSettings.mode] || null
+  const modeRef = useRef(initialSettings.mode)
+  const modeBucketsRef = useRef(initialBuckets)
+  const modeImagesRef = useRef({})
   const [provider, setProvider] = useState(initialApiConfig.provider)
   const [rememberKey, setRememberKey] = useState(initialApiConfig.rememberKey)
   const [savedKeys, setSavedKeys] = useState(initialApiConfig.keysByProvider)
@@ -346,31 +357,31 @@ export default function MainDashboard({
   // da verdade: definem o recorte da referência, o recorte do resultado e a
   // quantidade de frames pedida à IA. A detecção automática apenas preenche
   // esses campos ao carregar a imagem.
-  const [columns, setColumns] = useState(() => initialWorkspace?.columns ?? '1')
-  const [rows, setRows] = useState(() => initialWorkspace?.rows ?? '1')
+  const [columns, setColumns] = useState(() => initialBucket?.columns ?? '1')
+  const [rows, setRows] = useState(() => initialBucket?.rows ?? '1')
   const [autoSlice, setAutoSlice] = useState(
-    () => initialWorkspace?.autoSlice ?? false,
+    () => initialBucket?.autoSlice ?? false,
   )
   // Quantidade de frames que a IA deve desenhar. É independente da grade de
   // Grade que a IA deve desenhar (colunas × linhas). É independente da grade
   // de recorte usada para exibir/fatiar a imagem.
   const [generationColumns, setGenerationColumns] = useState(() =>
-    Number.isFinite(initialWorkspace?.generationColumns)
-      ? String(initialWorkspace.generationColumns)
+    Number.isFinite(initialBucket?.generationColumns)
+      ? String(initialBucket.generationColumns)
       : '1',
   )
   const [generationRows, setGenerationRows] = useState(() =>
-    Number.isFinite(initialWorkspace?.generationRows)
-      ? String(initialWorkspace.generationRows)
+    Number.isFinite(initialBucket?.generationRows)
+      ? String(initialBucket.generationRows)
       : '1',
   )
   const initialGridTotal =
-    Math.max(1, Number.parseInt(initialWorkspace?.columns, 10) || 1) *
-    Math.max(1, Number.parseInt(initialWorkspace?.rows, 10) || 1)
+    Math.max(1, Number.parseInt(initialBucket?.columns, 10) || 1) *
+    Math.max(1, Number.parseInt(initialBucket?.rows, 10) || 1)
   const generationGridEditedRef = useRef(
-    Number.isFinite(initialWorkspace?.generationColumns) &&
-      Number.isFinite(initialWorkspace?.generationRows) &&
-      initialWorkspace.generationColumns * initialWorkspace.generationRows !==
+    Number.isFinite(initialBucket?.generationColumns) &&
+      Number.isFinite(initialBucket?.generationRows) &&
+      initialBucket.generationColumns * initialBucket.generationRows !==
         initialGridTotal,
   )
   const [referenceFrames, setReferenceFrames] = useState([])
@@ -425,10 +436,10 @@ export default function MainDashboard({
 
   /* ----------------------------- Prompts -------------------------------- */
   const [appearance, setAppearance] = useState(
-    () => initialWorkspace?.appearance ?? '',
+    () => initialBucket?.appearance ?? '',
   )
   const [artStyle, setArtStyle] = useState(
-    () => initialWorkspace?.artStyle ?? '',
+    () => initialBucket?.artStyle ?? '',
   )
 
   /* --------------------------- Geração ---------------------------------- */
@@ -447,19 +458,21 @@ export default function MainDashboard({
   /* ----------------------------- Player --------------------------------- */
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0)
   const [viewMode, setViewMode] = useState(
-    () => initialWorkspace?.viewMode ?? 'loop',
+    () => initialBucket?.viewMode ?? 'loop',
   ) // 'loop' | 'frame-by-frame'
-  const [fps, setFps] = useState(() => initialWorkspace?.fps ?? 8)
+  const [fps, setFps] = useState(() => initialBucket?.fps ?? 8)
 
   /* --------------------------- Correção --------------------------------- */
-  const [correctionPrompt, setCorrectionPrompt] = useState('')
+  const [correctionPrompt, setCorrectionPrompt] = useState(
+    () => initialBucket?.correctionPrompt ?? '',
+  )
   const [correctionFrame, setCorrectionFrame] = useState(null)
   const [correcting, setCorrecting] = useState(false)
   const [correctionError, setCorrectionError] = useState('')
 
   /* --------------------------- Exportação ------------------------------- */
   const [exportColumns, setExportColumns] = useState(
-    () => initialWorkspace?.exportColumns ?? '4',
+    () => initialBucket?.exportColumns ?? '4',
   )
   const [exporting, setExporting] = useState(null)
 
@@ -485,7 +498,7 @@ export default function MainDashboard({
   // Dados da última geração que devolveu imagem, para o painel de métricas.
   // Independente dos logs: é limpo ao remover o resultado gerado.
   const [lastGeneration, setLastGeneration] = useState(
-    () => initialWorkspace?.lastGeneration ?? null,
+    () => initialBucket?.lastGeneration ?? null,
   )
 
   useEffect(() => {
@@ -661,11 +674,11 @@ export default function MainDashboard({
   }, [])
 
   /* ---------------- Persistência local (só neste dispositivo) ----------- */
-  // Configurações e textos: pequenos, vão para o localStorage a cada mudança.
-  // Não inclui chave de API (tem fluxo próprio em api-config).
+  // Textos, prompts e grade são salvos por modo. As imagens usam chaves
+  // separadas no IndexedDB (avançado/editor/simples).
   useEffect(() => {
     if (!saveSession) return
-    const saved = saveWorkspaceSettings({
+    const bucket = {
       columns,
       rows,
       autoSlice,
@@ -674,11 +687,14 @@ export default function MainDashboard({
       exportColumns,
       appearance,
       artStyle,
-      generationColumns:
-        Number.parseInt(generationColumns, 10) || null,
+      generationColumns: Number.parseInt(generationColumns, 10) || null,
       generationRows: Number.parseInt(generationRows, 10) || null,
+      correctionPrompt,
       lastGeneration,
-    })
+    }
+    const modes = { ...modeBucketsRef.current, [modeRef.current]: bucket }
+    modeBucketsRef.current = modes
+    const saved = saveWorkspaceSettings({ modes })
     if (!saved) warnLocalSaveFailure('salvar as configurações da sessão')
   }, [
     columns,
@@ -691,6 +707,7 @@ export default function MainDashboard({
     artStyle,
     generationColumns,
     generationRows,
+    correctionPrompt,
     lastGeneration,
     saveSession,
     warnLocalSaveFailure,
@@ -706,7 +723,7 @@ export default function MainDashboard({
     if (lastSavedSheetsRef.current === generatedSheets) return
     lastSavedSheetsRef.current = generatedSheets
     void putLocalImages(
-      LOCAL_IMAGE_KEYS.generated,
+      imageKey(modeRef.current, 'generated'),
       generatedSheets.map((dataUrl) => ({ dataUrl })),
     ).then((ok) => {
       if (!ok) warnLocalSaveFailure('salvar o resultado gerado')
@@ -717,7 +734,7 @@ export default function MainDashboard({
   // dados da sessão; remover qualquer um deles apaga a cópia local.
   useEffect(() => {
     if (!saveSession || !editorSource?.dataUrl) return
-    void putLocalImages(LOCAL_IMAGE_KEYS.editorSource, [
+    void putLocalImages(imageKey('editor', 'editorSource'), [
       {
         dataUrl: editorSource.dataUrl,
         meta: { name: editorSource.name || 'editor.png' },
@@ -727,64 +744,148 @@ export default function MainDashboard({
     })
   }, [editorSource, saveSession, warnLocalSaveFailure])
 
-  // Restaura, uma única vez ao abrir, as imagens salvas neste navegador.
+  /* ---------------------- Dados por modo (sessão) ------------------------ */
+  const captureModeImages = useCallback(
+    () => ({
+      reference,
+      styleReference,
+      appearanceReference,
+      generatedSheets,
+      editorSource,
+    }),
+    [
+      reference,
+      styleReference,
+      appearanceReference,
+      generatedSheets,
+      editorSource,
+    ],
+  )
+
+  const applyModeImages = useCallback((snapshot) => {
+    const snap = snapshot || {}
+    setReference(snap.reference ?? null)
+    setStyleReference(snap.styleReference ?? null)
+    setAppearanceReference(snap.appearanceReference ?? null)
+    setGeneratedSheets(
+      Array.isArray(snap.generatedSheets) ? snap.generatedSheets : [],
+    )
+    setEditorSource(snap.editorSource ?? null)
+    lastSavedSheetsRef.current = Array.isArray(snap.generatedSheets)
+      ? snap.generatedSheets
+      : []
+  }, [])
+
+  const readModeImages = useCallback(async (mode, name) => {
+    const primary = await getLocalImages(imageKey(mode, name))
+    if (primary.length > 0) return primary
+    // Compatibilidade: dados antigos ficavam sem prefixo de modo.
+    if (mode === 'advanced') {
+      const legacy = await getLocalImages(name)
+      if (legacy.length > 0) return legacy
+    }
+    return []
+  }, [])
+
+  const loadModeImages = useCallback(
+    async (mode) => {
+      const cached = modeImagesRef.current[mode]
+      if (cached) {
+        applyModeImages(cached)
+        return 0
+      }
+
+      const [pose, style, appearanceImage, generated, editorInput] =
+        await Promise.all([
+          readModeImages(mode, 'pose'),
+          readModeImages(mode, 'style'),
+          readModeImages(mode, 'appearance'),
+          readModeImages(mode, 'generated'),
+          readModeImages(mode, 'editorSource'),
+        ])
+
+      const snapshot = {
+        reference: pose[0]?.dataUrl
+          ? {
+              ...(pose[0].meta || {}),
+              dataUrl: pose[0].dataUrl,
+              kind: pose[0].meta?.kind || 'file',
+            }
+          : null,
+        styleReference: style[0]?.dataUrl
+          ? { ...(style[0].meta || {}), dataUrl: style[0].dataUrl }
+          : null,
+        appearanceReference: appearanceImage[0]?.dataUrl
+          ? { ...(appearanceImage[0].meta || {}), dataUrl: appearanceImage[0].dataUrl }
+          : null,
+        generatedSheets: generated.map((item) => item.dataUrl).filter(Boolean),
+        editorSource: editorInput[0]?.dataUrl
+          ? {
+              dataUrl: editorInput[0].dataUrl,
+              name: editorInput[0].meta?.name || 'editor.png',
+            }
+          : null,
+      }
+      modeImagesRef.current[mode] = snapshot
+      applyModeImages(snapshot)
+      return [pose, style, appearanceImage, generated, editorInput].filter(
+        (list) => list.length > 0,
+      ).length
+    },
+    [applyModeImages, readModeImages],
+  )
+
+  // Troca de modo: guarda o estado atual no modo de origem e carrega o destino.
+  useEffect(() => {
+    if (modeRef.current === settings.mode) return
+    const previous = modeRef.current
+    modeImagesRef.current[previous] = captureModeImages()
+
+    const target = modeBucketsRef.current[settings.mode] || null
+    setColumns(typeof target?.columns === 'string' ? target.columns : '1')
+    setRows(typeof target?.rows === 'string' ? target.rows : '1')
+    setAutoSlice(Boolean(target?.autoSlice))
+    setFps(Number.isFinite(target?.fps) ? target.fps : 8)
+    setViewMode(
+      target?.viewMode === 'frame-by-frame' ? 'frame-by-frame' : 'loop',
+    )
+    setExportColumns(
+      typeof target?.exportColumns === 'string' ? target.exportColumns : '4',
+    )
+    setAppearance(typeof target?.appearance === 'string' ? target.appearance : '')
+    setArtStyle(typeof target?.artStyle === 'string' ? target.artStyle : '')
+    setGenerationColumns(
+      Number.isFinite(target?.generationColumns)
+        ? String(target.generationColumns)
+        : '1',
+    )
+    setGenerationRows(
+      Number.isFinite(target?.generationRows)
+        ? String(target.generationRows)
+        : '1',
+    )
+    setCorrectionPrompt(
+      typeof target?.correctionPrompt === 'string' ? target.correctionPrompt : '',
+    )
+    setLastGeneration(target?.lastGeneration ?? null)
+    setCurrentFrameIndex(0)
+    setCorrectionFrame(null)
+    setCorrectionError('')
+    setModalOpen(false)
+
+    modeRef.current = settings.mode
+    void loadModeImages(settings.mode)
+  }, [settings.mode, captureModeImages, loadModeImages])
+
+  // Restaura, uma única vez ao abrir, as imagens do modo ativo.
   useEffect(() => {
     if (restoreLocalRef.current) return
     restoreLocalRef.current = true
-    // Sem "salvar sessão", nada é restaurado (nem ao religar no meio da sessão).
     if (!saveSession) return undefined
 
     ;(async () => {
       try {
-        const [pose, style, appearanceImage, generated, editorInput] =
-          await Promise.all([
-            getLocalImages(LOCAL_IMAGE_KEYS.pose),
-            getLocalImages(LOCAL_IMAGE_KEYS.style),
-            getLocalImages(LOCAL_IMAGE_KEYS.appearance),
-            getLocalImages(LOCAL_IMAGE_KEYS.generated),
-            getLocalImages(LOCAL_IMAGE_KEYS.editorSource),
-          ])
-
-        let restored = 0
-        if (pose[0]?.dataUrl) {
-          setReference({
-            ...(pose[0].meta || {}),
-            dataUrl: pose[0].dataUrl,
-            kind: pose[0].meta?.kind || 'file',
-          })
-          restored += 1
-        }
-        if (style[0]?.dataUrl) {
-          setStyleReference({
-            ...(style[0].meta || {}),
-            dataUrl: style[0].dataUrl,
-          })
-          restored += 1
-        }
-        if (appearanceImage[0]?.dataUrl) {
-          setAppearanceReference({
-            ...(appearanceImage[0].meta || {}),
-            dataUrl: appearanceImage[0].dataUrl,
-          })
-          restored += 1
-        }
-
-        const sheets = generated.map((item) => item.dataUrl).filter(Boolean)
-        if (sheets.length > 0) {
-          // Evita regravar exatamente o que acabou de ser restaurado.
-          lastSavedSheetsRef.current = sheets
-          setGeneratedSheets(sheets)
-          restored += 1
-        }
-
-        if (editorInput[0]?.dataUrl) {
-          setEditorSource({
-            dataUrl: editorInput[0].dataUrl,
-            name: editorInput[0].meta?.name || 'editor.png',
-          })
-          restored += 1
-        }
-
+        const restored = await loadModeImages(initialSettings.mode)
         if (restored > 0) {
           pushToast('Sessão anterior restaurada deste dispositivo.', 'info')
         }
@@ -798,7 +899,8 @@ export default function MainDashboard({
         )
       }
     })()
-  }, [pushToast, saveSession])
+  }, [initialSettings.mode, loadModeImages, pushToast, saveSession])
+
 
   const handleConfirmRemoveGenerated = useCallback(async () => {
     setRemoveDialogOpen(false)
@@ -813,7 +915,7 @@ export default function MainDashboard({
     setLastGeneration(null)
     lastSavedSheetsRef.current = null
 
-    const ok = await deleteLocalImages(LOCAL_IMAGE_KEYS.generated)
+    const ok = await deleteLocalImages(imageKey(modeRef.current, 'generated'))
     if (!ok) {
       warnLocalSaveFailure('apagar o resultado salvo')
       return
@@ -844,6 +946,8 @@ export default function MainDashboard({
         return
       }
       clearWorkspaceSettings()
+      modeBucketsRef.current = {}
+      modeImagesRef.current = {}
       try {
         window.localStorage.removeItem(API_CONFIG_STORAGE_KEY)
       } catch {
@@ -858,6 +962,9 @@ export default function MainDashboard({
       setAppearanceReference(null)
       setAppearance('')
       setArtStyle('')
+      setCorrectionPrompt('')
+      setModalPrompt('')
+      setCorrectionError('')
       setGeneratedSheets([])
       setFrames([])
       setSlicingResult(false)
@@ -937,8 +1044,8 @@ export default function MainDashboard({
     setCorrectionPrompt('')
     setCorrectionError('')
     lastSavedSheetsRef.current = null
-    void deleteLocalImages(LOCAL_IMAGE_KEYS.editorSource)
-    void deleteLocalImages(LOCAL_IMAGE_KEYS.generated)
+    void deleteLocalImages(imageKey('editor', 'editorSource'))
+    void deleteLocalImages(imageKey(modeRef.current, 'generated'))
   }, [])
 
   /* ------------------------ Métrica de qualidade ------------------------ */
@@ -1396,7 +1503,7 @@ export default function MainDashboard({
         })
         // Mantém a referência salva neste navegador para a próxima visita.
         if (saveSession) {
-          void putLocalImages(LOCAL_IMAGE_KEYS.pose, [
+          void putLocalImages(imageKey(modeRef.current, 'pose'), [
             {
               dataUrl: image.dataUrl,
               meta: {
@@ -1457,7 +1564,7 @@ export default function MainDashboard({
     setGenerationColumns('1')
     setGenerationRows('1')
     setReferenceError('')
-    void deleteLocalImages(LOCAL_IMAGE_KEYS.pose).then((ok) => {
+    void deleteLocalImages(imageKey(modeRef.current, 'pose')).then((ok) => {
       if (!ok) warnLocalSaveFailure('apagar a referência salva')
     })
   }, [warnLocalSaveFailure])
@@ -1473,7 +1580,7 @@ export default function MainDashboard({
           name: file.name,
         })
         if (saveSession) {
-          void putLocalImages(LOCAL_IMAGE_KEYS.style, [
+          void putLocalImages(imageKey(modeRef.current, 'style'), [
             {
               dataUrl: image.dataUrl,
               meta: {
@@ -1496,7 +1603,7 @@ export default function MainDashboard({
 
   const handleClearStyleReference = useCallback(() => {
     setStyleReference(null)
-    void deleteLocalImages(LOCAL_IMAGE_KEYS.style).then((ok) => {
+    void deleteLocalImages(imageKey(modeRef.current, 'style')).then((ok) => {
       if (!ok) warnLocalSaveFailure('apagar a referência de estilo salva')
     })
   }, [warnLocalSaveFailure])
@@ -1512,7 +1619,7 @@ export default function MainDashboard({
           name: file.name,
         })
         if (saveSession) {
-          void putLocalImages(LOCAL_IMAGE_KEYS.appearance, [
+          void putLocalImages(imageKey(modeRef.current, 'appearance'), [
             {
               dataUrl: image.dataUrl,
               meta: {
@@ -1535,7 +1642,7 @@ export default function MainDashboard({
 
   const handleClearAppearanceReference = useCallback(() => {
     setAppearanceReference(null)
-    void deleteLocalImages(LOCAL_IMAGE_KEYS.appearance).then((ok) => {
+    void deleteLocalImages(imageKey(modeRef.current, 'appearance')).then((ok) => {
       if (!ok) warnLocalSaveFailure('apagar a referência de aparência salva')
     })
   }, [warnLocalSaveFailure])
@@ -2616,6 +2723,7 @@ export default function MainDashboard({
         onDiscardCandidate={handleModalDiscardCandidate}
         applyingSingle={modalApplyingSingle}
         applyingAll={modalApplyingAll}
+        showPose={settings.mode !== 'editor'}
       />
 
       {removeDialogOpen && (
