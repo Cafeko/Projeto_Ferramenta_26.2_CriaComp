@@ -246,7 +246,7 @@ export default function SettingsModal({
                 {
                   id: 'simple',
                   label: 'Modo simples',
-                  hint: 'Em desenvolvimento.',
+                  hint: 'Um passo de cada vez.',
                 },
               ].map((option) => {
                 const active = settings.mode === option.id
@@ -276,13 +276,6 @@ export default function SettingsModal({
                 )
               })}
             </div>
-
-            {settings.mode === 'simple' && (
-              <p className="mt-2 rounded-md border border-amber-400/20 bg-amber-400/10 px-2 py-1.5 text-[10px] leading-relaxed text-amber-200">
-                O modo simples ainda está sendo construído. Por enquanto a
-                interface avançada continua sendo usada.
-              </p>
-            )}
 
             <div className="mt-2">
               <Switch

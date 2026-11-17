@@ -441,9 +441,27 @@ navegador em `spritetransfer:settings`):
   chaves e resultado). Pede confirmação e **não** toca nos logs de requisições,
   que só são apagados na página de logs.
 - **Modo avançado / editor / simples:** o **editor** troca a interface pelo
-  modo de edição (ver abaixo); o **simples** ainda está em desenvolvimento e
-  mantém a interface avançada com um aviso.
+  modo de edição e o **simples** pelo modo guiado (ver abaixo); o avançado
+  mostra todos os painéis de uma vez.
 - **Mostrar métricas no final:** liga/desliga o painel de métricas do rodapé.
+
+### Modo básico
+
+O **Modo simples** conduz o usuário por **um bloco de cada vez**, de cima para
+baixo, com uma frase curta de instrução em cada passo e um botão de continuar
+que só libera quando o passo está pronto:
+
+1. **Configure a API** — provedor, chave (validar) e modelo.
+2. **Informe as entradas** — referência de movimento, aparência/estilo e
+   `[ GERAR NOVO SPRITESHEET ]`.
+3. **Confira o resultado** — visualização dos frames, grade de recorte e
+   exportação.
+4. **Métricas** — quando **Mostrar métricas no final** está ligado; senão a
+   trilha termina no passo 3.
+
+A trilha no topo mostra o progresso (`1. API › 2. Entradas › 3. Resultado ›
+4. Métricas`) e permite voltar a um passo já liberado. Cada modo continua com
+seus próprios dados salvos.
 
 ### Modo editor
 

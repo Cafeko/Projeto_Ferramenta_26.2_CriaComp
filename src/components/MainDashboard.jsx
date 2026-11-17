@@ -21,6 +21,7 @@ import LogsPage from './dashboard/LogsPage'
 import PreviewPanel from './dashboard/PreviewPanel'
 import ReferencePanel from './dashboard/ReferencePanel'
 import SettingsModal from './dashboard/SettingsModal'
+import SimpleMode from './dashboard/SimpleMode'
 import UsageSummary from './dashboard/UsageSummary'
 import {
   DEFAULT_PROVIDER,
@@ -488,6 +489,7 @@ export default function MainDashboard({
   const [modalApplyingAll, setModalApplyingAll] = useState(false)
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false)
   const [batchCandidate, setBatchCandidate] = useState(null)
+  const [simpleStep, setSimpleStep] = useState(1)
 
   /* ------------------- Métricas de tempo e custo ----------------------- */
   // Histórico das chamadas à IA (tempo, tokens, custo). Fica no localStorage
@@ -874,6 +876,7 @@ export default function MainDashboard({
     setModalOpen(false)
 
     modeRef.current = settings.mode
+    if (settings.mode === 'simple') setSimpleStep(1)
     void loadModeImages(settings.mode)
   }, [settings.mode, captureModeImages, loadModeImages])
 
@@ -2450,6 +2453,104 @@ export default function MainDashboard({
     }
   }, [exporting, fps, frames, pushToast])
 
+  /* -------------------------- Modo simples ------------------------------ */
+  const simpleProps = {
+    step: simpleStep,
+    onStepChange: setSimpleStep,
+    showMetrics: settings.showMetrics,
+    api: {
+      provider,
+      onProviderChange: handleProviderChange,
+      apiKey,
+      onApiKeyChange: handleApiKeyChange,
+      onValidate: handleValidateKey,
+      status: keyStatus,
+      error: keyError,
+      models,
+      modelId,
+      onModelChange: handleModelChange,
+      modelsWarning,
+      rememberKey,
+      onRememberKeyChange: handleRememberKeyChange,
+      onClearKey: handleClearSavedKey,
+    },
+    reference: {
+      reference,
+      onFileSelected: handleFileSelected,
+      onClearReference: handleClearReference,
+      appearance,
+      onAppearanceChange: setAppearance,
+      appearanceReference,
+      onAppearanceFileSelected: handleAppearanceFileSelected,
+      onClearAppearanceReference: handleClearAppearanceReference,
+      artStyle,
+      onArtStyleChange: setArtStyle,
+      styleReference,
+      onStyleFileSelected: handleStyleFileSelected,
+      onClearStyleReference: handleClearStyleReference,
+      onGenerate: handleGenerate,
+      generating,
+      elapsed,
+      canGenerate,
+      generateHint,
+      referenceError,
+      onMultipleFiles: () =>
+        pushToast(
+          'Envie apenas uma imagem por vez em cada campo. Usei a primeira.',
+          'info',
+        ),
+      generationColumns,
+      generationRows,
+      referenceGrid: effectiveGrid,
+      onGenerationColumnsChange: handleGenerationColumnsChange,
+      onGenerationRowsChange: handleGenerationRowsChange,
+    },
+    preview: {
+      referenceFrames: activeReferenceFrames,
+      frames,
+      fps,
+      onFpsChange: setFps,
+      viewMode,
+      onViewModeChange: setViewMode,
+      currentFrameIndex,
+      onCurrentFrameIndexChange: setCurrentFrameIndex,
+      generating,
+      referenceBusy,
+      generationError,
+      slicing: slicingResult,
+      onRemoveGenerated: () => setRemoveDialogOpen(true),
+      showOriginal: true,
+    },
+    grid: {
+      referenceGrid: effectiveGrid,
+      generationColumns,
+      generationRows,
+      columns,
+      rows,
+      autoSlice,
+      slicing: slicingResult,
+      frameCount: frames.length,
+      onColumnsChange: setColumns,
+      onRowsChange: setRows,
+      onAutoSliceChange: setAutoSlice,
+    },
+    exportPanel: {
+      frames,
+      columns: exportColumns,
+      onColumnsChange: setExportColumns,
+      onExportGrid: handleExportGrid,
+      onExportGif: handleExportGif,
+      exporting,
+    },
+    metrics: {
+      history: usageHistory,
+      latest: lastGeneration,
+      quality,
+      onEditFrame: frames.length > 1 ? handleEditFrame : null,
+      onOpenLogs: onOpenLogs ?? (() => {}),
+    },
+  }
+
   /* ----------------------------- Layout --------------------------------- */
   return (
     <>
@@ -2493,24 +2594,10 @@ export default function MainDashboard({
               onClearSource={handleEditorClearSource}
             />
           </>
+        ) : settings.mode === 'simple' ? (
+          <SimpleMode {...simpleProps} />
         ) : (
           <>
-        {settings.mode === 'simple' && (
-          <p className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[10px] leading-relaxed text-amber-200">
-            <strong className="font-semibold">Modo simples em desenvolvimento:</strong>{' '}
-            por enquanto a interface avançada continua ativa. Você pode voltar ao
-            modo avançado em Configurações.
-          </p>
-        )}
-
-        {settings.mode === 'simple' && (
-          <p className="rounded-xl border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-[10px] leading-relaxed text-amber-200">
-            <strong className="font-semibold">Modo simples em desenvolvimento:</strong>{' '}
-            por enquanto a interface avançada continua ativa. Você pode voltar ao
-            modo avançado em Configurações.
-          </p>
-        )}
-
         {/* Faixa 1 — API + inputs, ocupando a largura toda */}
         <section
           aria-label="Configuração e referências"
@@ -2570,6 +2657,8 @@ export default function MainDashboard({
           </>
         )}
 
+        {settings.mode !== 'simple' && (
+          <>
         {/* Faixa 2 — visualização dos frames e grade/exportação */}
         <section
           aria-label="Visualização e grade"
@@ -2674,6 +2763,8 @@ export default function MainDashboard({
             </span>
           </p>
         </section>
+          </>
+        )}
       </main>
 
       <LogsPage
